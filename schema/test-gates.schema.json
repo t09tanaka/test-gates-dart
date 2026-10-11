@@ -1,0 +1,409 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/t09tanaka/test-gates-dart/blob/main/schema/test-gates.schema.json",
+  "title": "test-gates.json",
+  "description": "The single source of truth for the test gates of one package (test_gates, the Dart port of @t09tanaka/test-gates). The keys are the same as upstream; the defaults are those of Dart (settings.gateExtensions, settings.spec, the built-in impure imports, impure paths and forbidden source).",
+  "type": "object",
+  "required": ["gates"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "gates": {
+      "description": "Pure modules that hold an important decision. Each must reach 100% on all four coverage metrics and leave no surviving mutant outside its allow list.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/gate"
+      }
+    },
+    "candidates": {
+      "description": "Important logic that cannot be a gate yet. Nothing is enforced for these beyond their existence.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/candidate"
+      }
+    },
+    "settings": {
+      "$ref": "#/definitions/settings"
+    }
+  },
+  "definitions": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "\\S"
+    },
+    "gate": {
+      "type": "object",
+      "required": ["path", "decides", "impact"],
+      "additionalProperties": true,
+      "properties": {
+        "path": {
+          "description": "Path of the module, relative to the subproject, with forward slashes.",
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "decides": {
+          "description": "What this module decides.",
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "impact": {
+          "description": "What goes wrong for users or the business when the decision is wrong.",
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "equivalentMutants": {
+          "description": "Surviving mutants that are allowed because they cannot be observed from outside. One entry allows exactly one mutant.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/equivalentMutant"
+          }
+        },
+        "expectedTimeouts": {
+          "description": "Mutants that can never finish (a loop that no longer ends) and therefore always time out. Same key as equivalentMutants. They are not counted against settings.mutation.maxTimeouts. An entry whose mutant survives, or does not exist, fails the run; one that is killed is accepted.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/equivalentMutant"
+          }
+        }
+      }
+    },
+    "equivalentMutant": {
+      "type": "object",
+      "required": ["mutator", "original", "replacement", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "mutator": {
+          "description": "Stryker mutator name, e.g. ConditionalExpression.",
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "original": {
+          "description": "The source text the mutant replaces. Whitespace differences are ignored.",
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "replacement": {
+          "description": "The text Stryker puts in its place. May be empty.",
+          "type": "string"
+        },
+        "reason": {
+          "description": "Why no input can make the mutant observable.",
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "occurrence": {
+          "description": "1-based index among the mutants of the file with the same mutator, original and replacement. Required when there is more than one.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "required": ["path", "decides", "blocker"],
+      "additionalProperties": true,
+      "properties": {
+        "path": {
+          "description": "File or directory, relative to the subproject.",
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "decides": {
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "blocker": {
+          "description": "What has to happen before this can become a gate.",
+          "$ref": "#/definitions/nonEmptyString"
+        }
+      }
+    },
+    "patternRule": {
+      "description": "A regular expression, either as a string or with flags and a reason.",
+      "oneOf": [
+        {
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        {
+          "type": "object",
+          "required": ["pattern"],
+          "additionalProperties": false,
+          "properties": {
+            "pattern": {
+              "$ref": "#/definitions/nonEmptyString"
+            },
+            "flags": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "ruleList": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defaults": {
+          "description": "Set to false to drop the built-in rules.",
+          "type": "boolean",
+          "default": true
+        },
+        "add": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/patternRule"
+          }
+        }
+      }
+    },
+    "settings": {
+      "description": "Per-project conventions. Everything is optional.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gateExtensions": {
+          "description": "File extensions a gate may have.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^\\."
+          },
+          "default": [".dart"]
+        },
+        "spec": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "suffixes": {
+              "description": "Replaces the gate's extension to form the path of its test. Default: \"_test<ext>\" (lib/a.dart -> lib/a_test.dart). An empty array means the project has no spec convention: the test checks are skipped.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/nonEmptyString"
+              }
+            },
+            "rewrite": {
+              "description": "Regular expression replacements applied to the gate path before the suffix, for tests that live in another directory. Not set: the test may be next to the gate or under test/ (lib/a/b.dart -> lib/a/b_test.dart or test/a/b_test.dart), and exactly one must exist. Once set, even to an empty array, only the rewritten path is looked at.",
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["from", "to"],
+                "additionalProperties": false,
+                "properties": {
+                  "from": {
+                    "$ref": "#/definitions/nonEmptyString"
+                  },
+                  "to": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "impureImports": {
+          "description": "URIs a gate must not import, export or have as a part (regular expressions tested against the URI as written: dart:io, package:dio/dio.dart, ../a.dart). Default: Flutter, dart:io / dart:ui / dart:ffi / dart:isolate / dart:mirrors, the browser libraries, HTTP clients, persistence, state management and external service SDKs; the README has the list.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "defaults": {
+              "type": "boolean",
+              "default": true
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/patternRule"
+              }
+            },
+            "allow": {
+              "description": "URIs exempt from every impureImports rule (regular expressions). Also lets a part that is not *.g.dart / *.freezed.dart in. It does not exempt from impureNamedImports or from allowlist mode.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/nonEmptyString"
+              }
+            }
+          }
+        },
+        "impureNamedImports": {
+          "description": "Names a gate must not use from a library that is otherwise fine (module is the URI as written, e.g. Random from dart:math). With show, the shown names are checked; without, the identifiers of the gate. No built-in rule.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "defaults": {
+              "type": "boolean",
+              "default": true
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["module", "names"],
+                "additionalProperties": false,
+                "properties": {
+                  "module": {
+                    "$ref": "#/definitions/nonEmptyString"
+                  },
+                  "names": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "$ref": "#/definitions/nonEmptyString"
+                    }
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "impurePaths": {
+          "description": "Gate paths that are rejected (regular expressions). Default: generated files (*.g.dart, *.freezed.dart). In allowlist mode a gate must not import such a file either.",
+          "$ref": "#/definitions/ruleList"
+        },
+        "forbiddenSource": {
+          "description": "What must not appear in a gate. add: regular expressions, tested one line at a time. Built in (defaults), found in the syntax and not with a pattern: Platform.environment, String.fromEnvironment, bool.fromEnvironment, int.fromEnvironment, bool.hasEnvironment.",
+          "$ref": "#/definitions/ruleList"
+        },
+        "importAliases": {
+          "description": "URI prefixes that point into the package, for allowlist mode. package:<name>/ -> lib/ (name of pubspec.yaml) is built in.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["prefix", "target"],
+            "additionalProperties": false,
+            "properties": {
+              "prefix": {
+                "$ref": "#/definitions/nonEmptyString"
+              },
+              "target": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "gateCommand": {
+          "description": "The command that runs the tests and writes the tracefile named by lcov.file, program first, started without a shell: [\"flutter\", \"test\", \"--coverage\", \"--branch-coverage\"]. Used by `test_gates test` and `test_gates selfcheck`. No default. (Upstream: the command `test-gates selfcheck` runs, whose exit code is the verdict.)",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/nonEmptyString"
+          }
+        },
+        "selfcheck": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "description": "Put the probe of the negative control in every gate, or only in the first.",
+              "enum": ["all", "first"],
+              "default": "all"
+            },
+            "failurePattern": {
+              "description": "Upstream only: regular expression the output of the failing gate run must match. Accepted and validated, without effect in the Dart tool, which reads the verdict from the tracefile.",
+              "$ref": "#/definitions/nonEmptyString"
+            }
+          }
+        },
+        "stryker": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "configFile": {
+              "description": "Default: stryker.gates.config.mjs (.js / .cjs / .json).",
+              "$ref": "#/definitions/nonEmptyString"
+            },
+            "reportFile": {
+              "description": "Where the mutation report (mutation-testing-elements / Stryker JSON schema) is written by `mutation` and read by `mutation-result`. The Dart tool uses this key of upstream for its own report.",
+              "$ref": "#/definitions/nonEmptyString",
+              "default": "reports/mutation/mutation.json"
+            }
+          }
+        },
+        "lcov": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "file": {
+              "description": "Tracefile for `test_gates lcov` when --file is not given.",
+              "$ref": "#/definitions/nonEmptyString"
+            },
+            "summaryExclude": {
+              "description": "Paths left out of the reference total (regular expressions).",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/nonEmptyString"
+              }
+            }
+          }
+        },
+        "imports": {
+          "description": "How runtime imports of a gate are judged.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "mode": {
+              "description": "blocklist (default): only the impureImports rules apply. allowlist: in addition, an import must be a file of the package (relative, package:<name>/, or an import alias), one of dart:core / dart:async / dart:collection / dart:convert / dart:math / dart:typed_data / package:collection / package:json_annotation / package:meta, or be listed in allow; an import of a file of the package must not point at a file matched by impurePaths.",
+              "enum": ["blocklist", "allowlist"],
+              "default": "blocklist"
+            },
+            "allow": {
+              "description": "Libraries a gate may import in allowlist mode. A string is a library and what is below it (package:decimal covers package:decimal/decimal.dart). { pattern } is a regular expression tested against the URI. { module, names } allows only those names, and only with show; such an entry for a built-in library (dart:math) narrows it.",
+              "type": "array",
+              "items": {
+                "oneOf": [
+                  {
+                    "$ref": "#/definitions/nonEmptyString"
+                  },
+                  {
+                    "type": "object",
+                    "required": ["pattern"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "pattern": {
+                        "$ref": "#/definitions/nonEmptyString"
+                      },
+                      "flags": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["module", "names"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "module": {
+                        "$ref": "#/definitions/nonEmptyString"
+                      },
+                      "names": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                          "$ref": "#/definitions/nonEmptyString"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "mutation": {
+          "description": "Limits of the mutation test.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxTimeouts": {
+              "description": "How many timed-out mutants outside expectedTimeouts are tolerated. Above it the run fails. Default: 0.",
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}

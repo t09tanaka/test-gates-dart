@@ -1,0 +1,11 @@
+import 'package:project/else_if.dart';
+import 'package:test/test.dart';
+
+void main() {
+  // The second condition is false every time: no `else if` block ever runs.
+  test('a false, b false', () {
+    expect(elseIfNeverTrue(false, false), 3);
+    expect(elseIfNoElse(false, false), 3);
+    expect(elseIfWithCall(false, false), 3);
+  });
+}

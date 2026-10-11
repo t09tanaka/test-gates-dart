@@ -1,0 +1,27 @@
+int elseIfNeverTrue(bool a, bool b) {
+  if (a) {
+    return 1;
+  } else if (b) {
+    return 2;
+  } else {
+    return 3;
+  }
+}
+
+int elseIfNoElse(bool a, bool b) {
+  if (a) {
+    return 1;
+  } else if (b) {
+    return 2;
+  }
+  return 3;
+}
+
+int elseIfWithCall(bool a, bool b) {
+  if (a) {
+    return 1;
+  } else if (b) {
+    return 2.abs();
+  }
+  return 3;
+}

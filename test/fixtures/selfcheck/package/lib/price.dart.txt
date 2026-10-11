@@ -1,0 +1,9 @@
+part 'price.g.dart';
+
+/// The price with tax, in cents.
+int withTax(int cents, int percent) {
+  if (percent == 0) {
+    return cents;
+  }
+  return cents + _tax(cents, percent);
+}

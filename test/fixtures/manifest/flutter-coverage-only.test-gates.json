@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/@t09tanaka/test-gates/schema/test-gates.schema.json",
+  "settings": {
+    "gateExtensions": [".dart"],
+    "spec": { "suffixes": [] },
+    "lcov": {
+      "file": "coverage/lcov.info",
+      "summaryExclude": ["\\.g\\.dart$", "lib/l10n/"]
+    }
+  },
+  "gates": [
+    { "path": "lib/models/shipping_fee.dart", "decides": "送料の計算", "impact": "Wrong shipping fee" },
+    { "path": "lib/utils/weight_units.dart", "decides": "Grams to kilograms", "impact": "Wrong weights" }
+  ],
+  "candidates": []
+}

@@ -1,0 +1,138 @@
+int ifElse(bool a) {
+  if (a) {
+    return 1;
+  } else {
+    return 2;
+  }
+}
+
+int ifNoElse(bool a) {
+  var x = 0;
+  if (a) {
+    x = 1;
+  }
+  return x;
+}
+
+int earlyReturn(bool a) {
+  if (!a) return 0;
+  return 1;
+}
+
+int ternary(bool a) {
+  return a ? 1 : 2;
+}
+
+int ternaryMultiline(bool a) {
+  return a
+      ? 1
+      : 2;
+}
+
+bool andOp(bool a, bool b) {
+  return a && b;
+}
+
+bool orOp(bool a, bool b) {
+  return a || b;
+}
+
+int nullCoalesce(int? a) {
+  return a ?? 7;
+}
+
+int nullCoalesceCall(int? a) {
+  return a ?? fallback();
+}
+
+int fallback() => 7;
+
+int? nullAware(String? s) {
+  return s?.length;
+}
+
+int switchStmt(int a) {
+  switch (a) {
+    case 1:
+      return 10;
+    case 2:
+      return 20;
+    default:
+      return 30;
+  }
+}
+
+int switchExpr(int a) {
+  return switch (a) {
+    1 => 10,
+    2 => 20,
+    _ => 30,
+  };
+}
+
+int forLoop(int n) {
+  var s = 0;
+  for (var i = 0; i < n; i++) {
+    s += i;
+  }
+  return s;
+}
+
+int whileLoop(int n) {
+  var s = 0;
+  while (n > 0) {
+    s += n;
+    n--;
+  }
+  return s;
+}
+
+int forIn(List<int> xs) {
+  var s = 0;
+  for (final x in xs) {
+    s += x;
+  }
+  return s;
+}
+
+int tryCatch(bool a) {
+  try {
+    if (a) throw StateError('x');
+    return 1;
+  } catch (_) {
+    return 2;
+  }
+}
+
+int oneLineIfElse(bool a) { if (a) { return 1; } else { return 2; } }
+
+int defaultParam([int a = 3]) => a;
+
+int notCalled(bool a) {
+  if (a) {
+    return 1;
+  }
+  return 2;
+}
+
+int noBranch(int a) {
+  return a + 1;
+}
+
+int elseIf(int a) {
+  if (a == 1) {
+    return 1;
+  } else if (a == 2) {
+    return 2;
+  }
+  return 3;
+}
+
+class Money {
+  Money(this.cents);
+  final int cents;
+  bool get isZero => cents == 0;
+  Money add(Money o) => Money(cents + o.cents);
+}
+
+const answer = 42;

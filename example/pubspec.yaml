@@ -1,0 +1,12 @@
+name: test_gates_example
+description: A small package with two gates, to show how test_gates is used.
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+
+dev_dependencies:
+  lints: ^6.0.0
+  test: ^1.27.0
+  test_gates:
+    path: ..

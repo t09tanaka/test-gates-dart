@@ -1,0 +1,77 @@
+// Stands in for "flutter test --coverage --branch-coverage" in the tests of
+// `test_gates test` and `test_gates selfcheck`. Kept as .txt so that it is not
+// analyzed or formatted with the package; the tests copy it into a temporary
+// directory and run it there.
+//
+// Usage: dart fake_coverage.dart <mode> <tracefile> [<source file>...]
+import 'dart:io';
+
+/// One record per source file, as Dart writes it: an entry for every line on
+/// which a function starts. The function of a selfcheck probe is the only one
+/// that is "never called".
+String measure(List<String> sources, {bool branches = true}) {
+  final out = StringBuffer();
+  for (final source in sources) {
+    out.writeln('SF:$source');
+    final lines = File(source).readAsLinesSync();
+    for (var index = 0; index < lines.length; index++) {
+      final line = lines[index];
+      if (line.startsWith('//') || !line.contains('(')) {
+        continue;
+      }
+      final hits = line.contains('testGatesSelfcheckProbe') ? 0 : 1;
+      out.writeln('DA:${index + 1},$hits');
+      if (branches) {
+        out.writeln('BRDA:${index + 1},0,0,$hits');
+      }
+    }
+    out.writeln('end_of_record');
+  }
+  return out.toString();
+}
+
+Future<void> main(List<String> arguments) async {
+  final mode = arguments[0];
+  final tracefile = File(arguments[1]);
+  final sources = arguments.sublist(2);
+  void write(String text) => tracefile
+    ..createSync(recursive: true)
+    ..writeAsStringSync(text);
+
+  switch (mode) {
+    case 'honest':
+      write(measure(sources));
+    case 'no-branches':
+      write(measure(sources, branches: false));
+    case 'blind':
+      // Measures something else than the files on disk: every gate is at
+      // 100% whatever is in it.
+      write([
+        for (final source in sources)
+          'SF:$source\nDA:1,1\nBRDA:1,0,0,1\nend_of_record\n',
+      ].join());
+    case 'truncated':
+      final text = measure(sources);
+      write(text.substring(0, text.lastIndexOf('end_of_record')));
+    case 'failing':
+      write(measure(sources));
+      stdout.writeln('00:01 +1 -1: Some tests failed.');
+      exit(3);
+    case 'silent':
+      break;
+    case 'editing':
+      // Somebody saves a gate while the tests run.
+      final gate = File(sources.first);
+      gate.writeAsStringSync('// edited\n${gate.readAsStringSync()}');
+      write(measure(sources));
+    case 'overwriting':
+      File(sources.first).writeAsStringSync('int replaced() => 2;\n');
+      write(measure(sources));
+    case 'waiting':
+      File('started').writeAsStringSync('$pid');
+      await Future<void>.delayed(const Duration(minutes: 5));
+    default:
+      stderr.writeln('unknown mode $mode');
+      exit(64);
+  }
+}

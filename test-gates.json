@@ -1,0 +1,163 @@
+{
+  "$schema": "./schema/test-gates.schema.json",
+  "gates": [
+    {
+      "path": "lib/src/lcov.dart",
+      "decides": "Per-file line and branch coverage from an lcov tracefile, and whether each gate is at 100% of both",
+      "impact": "A gate with an unexecuted line or an untaken branch, with no record at all, or measured without branch coverage, passes"
+    },
+    {
+      "path": "lib/src/manifest.dart",
+      "decides": "Whether test-gates.json and each allowance in it are well formed (reason required, no duplicates, no path in both lists, no unknown top-level key)",
+      "impact": "An allowance without a reason, a duplicated gate or a misspelt key is accepted, and every command works from a broken list"
+    },
+    {
+      "path": "lib/src/settings.dart",
+      "decides": "The defaults and the validation of settings: what a gate must not import, where its test is, which command is run",
+      "impact": "A typo in a setting silently falls back to a default, or a built-in rule is lost, and gates stop being checked for it"
+    },
+    {
+      "path": "lib/src/spec_path.dart",
+      "decides": "Where the test of a gate is, and whether a path is itself a test",
+      "impact": "check and mutation look at the wrong test, or a gate without a test is not noticed"
+    },
+    {
+      "path": "lib/src/gate_path.dart",
+      "decides": "Whether a path in test-gates.json is a plain path inside the package",
+      "impact": "A gate outside the package is accepted, and selfcheck and mutation write to a file that is not the project's"
+    },
+    {
+      "path": "lib/src/pubspec.dart",
+      "decides": "The name of the package, which decides what counts as an import of the package itself in allowlist mode",
+      "impact": "Imports of another package are taken for the project's own files and pass the allowlist"
+    },
+    {
+      "path": "lib/src/json.dart",
+      "decides": "What counts as an object, a filled string and an integer when test-gates.json and a mutation report are read",
+      "impact": "An empty reason or a fractional occurrence is accepted as valid"
+    },
+    {
+      "path": "lib/src/import_policy.dart",
+      "decides": "Allowlist mode: which libraries a gate may import, with which names, and which project files",
+      "impact": "A gate imports an SDK or a service file unnoticed and stops being a pure module"
+    },
+    {
+      "path": "lib/src/dart_source.dart",
+      "decides": "What a Dart file imports, exports and has as parts, which names it reads from the environment, which tests it skips, and where two blocks share a line",
+      "impact": "An impure import, a skipped test or a line whose branch entry hides an untested block is not seen by check",
+      "expectedTimeouts": [
+        {
+          "mutator": "EqualityOperator",
+          "original": "!=",
+          "replacement": "==",
+          "occurrence": 1,
+          "reason": "The loop over the tokens would run while the token is the end of the file. That token is its own successor, so the loop never ends for an empty file"
+        }
+      ]
+    },
+    {
+      "path": "lib/src/scan.dart",
+      "decides": "The static rules for a gate and for its test: impure imports, parts, reads of the environment, coverage ignore comments, skipped tests, blocks sharing a line",
+      "impact": "A gate that does I/O, or whose coverage is switched off or whose test is skipped, passes check and reports 100%"
+    },
+    {
+      "path": "lib/src/mutators.dart",
+      "decides": "Which mutants are made from a gate: the mutators, what is left alone, and which mutants are not made because they cannot compile or are equivalent",
+      "impact": "A decision gets no mutant, so a test that does not check it is never found; or a mutant that is no real change is counted as a survivor"
+    },
+    {
+      "path": "lib/src/mutation_run.dart",
+      "decides": "The status of a mutant from its test run, the limit of a run, the report, and whether a result of the last run may be reused",
+      "impact": "A mutant that the tests did not notice is reported as killed, or an outdated result is reused after the gate or its test changed"
+    },
+    {
+      "path": "lib/src/mutation_result.dart",
+      "decides": "Whether a mutation run passes: which mutants count as detected, which survivors an allowance covers, when an allowance is stale or ambiguous, and how many timeouts are tolerated",
+      "impact": "A surviving mutant, a stale allowance or an unevaluated mutant passes silently and every project using test_gates loses its real guard"
+    },
+    {
+      "path": "lib/src/selfcheck.dart",
+      "decides": "The probe that is appended to a gate, how it is removed again, and whether a negative control held on the line of the probe",
+      "impact": "A gate that measures nothing is reported as working, or a probe is left in a source file or cuts into it when removed"
+    },
+    {
+      "path": "lib/src/args.dart",
+      "decides": "Which command-line arguments belong to test_gates, which command they select, and what is handed to the test command",
+      "impact": "A typo in an option is silently ignored, or --force and --first are dropped and a weaker run is taken for the full one",
+      "expectedTimeouts": [
+        {
+          "mutator": "BlockStatement",
+          "original": "{ index = _consume(parsed, argv, index, allowed); }",
+          "replacement": "{}",
+          "reason": "With an empty body the index never advances, so parseArgs never returns for a command line with an option"
+        },
+        {
+          "mutator": "UpdateOperator",
+          "original": "++",
+          "replacement": "--",
+          "occurrence": 1,
+          "reason": "The index moves back instead of forward after an argument was read, so the arguments are read again and again"
+        },
+        {
+          "mutator": "UpdateOperator",
+          "original": "++",
+          "replacement": "--",
+          "occurrence": 2,
+          "reason": "After an option with a separate value the parser returns to the option itself and reads it again forever (the same mutant times out upstream)"
+        }
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "path": "lib/src/types.dart",
+      "decides": "The shapes of a gate, an allowance and the settings",
+      "blocker": "Data: classes with fields. The one thing it formats is how a violation is printed (file:line: message), which the tests of the commands read. Their use is covered by the gates that read them"
+    },
+    {
+      "path": "lib/src/version.dart",
+      "decides": "The version that is part of the key of a reused mutation result",
+      "blocker": "A constant. A test keeps it equal to pubspec.yaml"
+    },
+    {
+      "path": "lib/src/cli.dart",
+      "decides": "Which command runs, and the exit code for wrong usage and for an unusable test-gates.json",
+      "blocker": "Imports dart:io (FileSystemException) and the commands, so it is not a pure module. The argument rules it uses are in args.dart, which is a gate"
+    },
+    {
+      "path": "lib/src/commands",
+      "decides": "The order of the steps of each command, what is printed, and the exit code",
+      "blocker": "Read and write files and start processes. The decisions they print are taken in the gates; what is left is tested with stand-in commands in test/commands"
+    },
+    {
+      "path": "lib/src/io",
+      "decides": "How files are replaced and put back, and how a process and its descendants are ended",
+      "blocker": "dart:io throughout. Tested against real files and processes in test/commands"
+    }
+  ],
+  "settings": {
+    "lcov": {
+      "file": "coverage/lcov.info"
+    },
+    "gateCommand": [
+      "dart",
+      "test",
+      "--coverage-path=coverage/lcov.info",
+      "--branch-coverage"
+    ],
+    "spec": {
+      "rewrite": [
+        {
+          "from": "^lib/src/",
+          "to": "test/"
+        }
+      ]
+    },
+    "imports": {
+      "mode": "allowlist",
+      "allow": [
+        "package:analyzer"
+      ]
+    }
+  }
+}

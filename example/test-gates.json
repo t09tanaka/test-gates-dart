@@ -1,0 +1,33 @@
+{
+  "gates": [
+    {
+      "path": "lib/bulk_discount.dart",
+      "decides": "The price of a line of an order, in cents: the discount for a large quantity and how it is rounded",
+      "impact": "The customer is charged an amount other than the one that was shown"
+    },
+    {
+      "path": "lib/shipping_fee.dart",
+      "decides": "The fee for sending a parcel, by weight, and its maximum",
+      "impact": "A heavy parcel is sent for too little, or the customer pays more than the advertised maximum",
+      "equivalentMutants": [
+        {
+          "mutator": "EqualityOperator",
+          "original": ">",
+          "replacement": ">=",
+          "reason": "A fee that is equal to the maximum is set to the maximum, which is the value it has"
+        }
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "path": "bin/estimate.dart",
+      "decides": "Which numbers of the command line are the price, the quantity and the weight",
+      "blocker": "Reads the arguments and prints (dart:io). What it prints is decided in the two gates"
+    }
+  ],
+  "settings": {
+    "lcov": { "file": "coverage/lcov.info" },
+    "gateCommand": ["dart", "test", "--coverage-path=coverage/lcov.info", "--branch-coverage"]
+  }
+}

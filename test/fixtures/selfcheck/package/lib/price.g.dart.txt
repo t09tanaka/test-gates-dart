@@ -1,0 +1,3 @@
+part of 'price.dart';
+
+int _tax(int cents, int percent) => cents * percent ~/ 100;

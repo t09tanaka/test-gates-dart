@@ -1,0 +1,31 @@
+name: test_gates
+description: >-
+  Test gates for the Dart and Flutter code that must not be wrong: per-file
+  100% line and branch coverage, static checks and mutation testing.
+version: 0.1.1
+repository: https://github.com/t09tanaka/test-gates-dart
+issue_tracker: https://github.com/t09tanaka/test-gates-dart/issues
+topics:
+  - testing
+  - coverage
+  - lcov
+  - mutation-testing
+  - cli
+
+environment:
+  sdk: ^3.9.0
+
+executables:
+  test_gates:
+
+dependencies:
+  # Wide on purpose: an app pins the analyzer through its code generators
+  # (json_serializable, freezed, ...), and this package has to resolve next
+  # to them. Only the parser and the syntax tree are used.
+  analyzer: '>=8.2.0 <15.0.0'
+
+dev_dependencies:
+  lints: ^6.0.0
+  # `dart test --coverage-path --branch-coverage` (settings.gateCommand of
+  # this package) exists from 1.27.0 on.
+  test: ^1.27.0

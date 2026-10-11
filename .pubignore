@@ -1,0 +1,16 @@
+# What .gitignore lists (a .pubignore replaces it for `dart pub publish`).
+.dart_tool/
+.packages
+build/
+coverage/
+pubspec.lock
+.worktrees/
+.DS_Store
+
+# Written by `test_gates mutation`.
+reports/
+
+# Not for users of the package.
+.github/
+example/coverage/
+example/reports/

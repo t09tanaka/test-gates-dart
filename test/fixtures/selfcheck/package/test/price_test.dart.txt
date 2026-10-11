@@ -1,0 +1,9 @@
+import 'package:selfcheck_fixture/price.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('withTax', () {
+    expect(withTax(1000, 0), 1000);
+    expect(withTax(1000, 8), 1080);
+  });
+}

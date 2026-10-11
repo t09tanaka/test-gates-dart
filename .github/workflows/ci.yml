@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Dart ${{ matrix.sdk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        sdk: [stable, 3.9.0]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ matrix.sdk }}
+      # Resolves example/ as well, which the analyzer needs.
+      - run: dart pub get
+      - run: dart format --output=none --set-exit-if-changed .
+      - run: dart analyze --fatal-infos
+      - run: dart test
+      # The gates of this package (test-gates.json). Which lines carry a
+      # branch entry is decided by the SDK, so these run on both.
+      - run: dart run test_gates check
+      - run: dart run test_gates test
+      - run: dart run test_gates selfcheck
+      # The package as a dependency of another one.
+      - name: The example
+        working-directory: example
+        run: |
+          dart run test_gates check
+          dart run test_gates test
+          dart run test_gates selfcheck
+          dart run test_gates mutation --force
+
+  # The mutation test, one job per gate. The list is read from
+  # test-gates.json, so a gate that is added there is run here.
+  gates:
+    name: List the gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      paths: ${{ steps.list.outputs.paths }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: echo "paths=$(jq -c '[.gates[].path]' test-gates.json)" >> "$GITHUB_OUTPUT"
+
+  mutation-gate:
+    # The verdict does not depend on the SDK, and the run is long: one SDK.
+    name: Mutation ${{ matrix.gate }}
+    needs: gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: ${{ fromJSON(needs.gates.outputs.paths) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+      - run: dart run test_gates mutation --force --gate "$GATE"
+        env:
+          GATE: ${{ matrix.gate }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutation-report-${{ strategy.job-index }}
+          path: reports/mutation/mutation.json
+          if-no-files-found: ignore
+
+  mutation:
+    # One check for all of them: the one to require for a merge.
+    name: Mutation test of the gates
+    needs: mutation-gate
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: test "$RESULT" = success
+        env:
+          RESULT: ${{ needs.mutation-gate.result }}
