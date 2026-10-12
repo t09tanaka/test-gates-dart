@@ -50,7 +50,7 @@ Options:
 
 Exit codes: 0 passed, 1 violations found, 2 wrong usage or unusable test-gates.json
 (mutation: or dart_mutant is missing or not a supported version),
-130 / 143 / 129 interrupted by SIGINT / SIGTERM / SIGHUP (test, selfcheck, timezones, mutation)
+130 / 143 / 129 interrupted by SIGINT / SIGTERM / SIGHUP (test, selfcheck, timezones, mutation, all)
 ''';
 
 /// Runs the checks of `all` ([steps], see `stepsOfAll`) one after the other
@@ -101,8 +101,8 @@ int _unusable(ManifestError error, Io io) {
 /// What the command reports is written to [io]. Nothing is thrown for a
 /// problem of the project; the exit code and [io] say what is wrong.
 ///
-/// `test`, `selfcheck` and `mutation` start a process and wait for it; the
-/// other commands only read files.
+/// `test`, `selfcheck`, `timezones`, `mutation` and `all` start processes
+/// and wait for them; `check`, `lcov` and `mutation-result` only read files.
 Future<int> runAsync(List<String> argv, Io io) async {
   try {
     final args = parseArgs(argv);
@@ -173,7 +173,8 @@ Future<int> runAsync(List<String> argv, Io io) async {
 }
 
 /// Runs the command line and returns the exit code. The commands that wait
-/// for a process (`test`, `selfcheck`, `mutation`) are only reachable through
+/// for a process (`test`, `selfcheck`, `timezones`, `mutation`, `all`) are
+/// only reachable through
 /// [runAsync].
 int run(List<String> argv, Io io) {
   try {
