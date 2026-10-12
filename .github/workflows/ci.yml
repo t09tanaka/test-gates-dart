@@ -42,8 +42,9 @@ jobs:
       # The gates of this package (test-gates.json). Which lines carry a
       # branch entry is decided by the SDK, so these run on both.
       - run: dart run test_gates check
-      - run: dart run test_gates test
-      - run: dart run test_gates selfcheck
+      # The coverage run and the negative control in one run of the tests.
+      # (The example below runs the two commands one after the other.)
+      - run: dart run test_gates test --selfcheck
       # One gate of this package names DateTime: --all runs them all.
       - run: dart run test_gates timezones --all
       # The package as a dependency of another one.

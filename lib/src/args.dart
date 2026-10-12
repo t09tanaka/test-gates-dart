@@ -33,6 +33,10 @@ class ParsedArgs {
   /// result of an earlier run.
   bool force = false;
 
+  /// `--selfcheck` (test): the run of the tests is also the negative
+  /// control, with a probe in every gate.
+  bool selfcheck = false;
+
   /// `--not-evaluable` (mutation, mutation-result): the mutants that could
   /// not be evaluated are listed, not only counted.
   bool notEvaluable = false;
@@ -60,7 +64,7 @@ const _valueOptions = ['--dir', '--file', '--report', '--gate', '--zone'];
 const _optionsByCommand = {
   'lcov': ['--dir', '--file'],
   'check': ['--dir'],
-  'test': ['--dir', '--file'],
+  'test': ['--dir', '--file', '--selfcheck'],
   'selfcheck': ['--dir', '--file', '--all', '--first'],
   'timezones': ['--dir', '--all', '--zone'],
   'mutation': ['--dir', '--report', '--force', '--gate', '--not-evaluable'],
@@ -125,6 +129,10 @@ int _consume(
     }
     if (name == '--not-evaluable') {
       parsed.notEvaluable = true;
+      return index;
+    }
+    if (name == '--selfcheck') {
+      parsed.selfcheck = true;
       return index;
     }
     final mode = name == '--all' ? 'all' : 'first';

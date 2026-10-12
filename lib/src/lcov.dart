@@ -75,7 +75,9 @@ class _OpenRecord {
 
 num _max(num? a, num b) => a == null ? b : max(a, b);
 
-String _normalizePath(String file, [List<String> rootDirs = const []]) {
+/// The path of a record as the judgement compares it: with `/`, without one
+/// of [rootDirs] in front of it, and without a leading `./`.
+String normalizeLcovPath(String file, [List<String> rootDirs = const []]) {
   var normalized = file.replaceAll(r'\', '/');
   for (final rootDir in rootDirs) {
     final root = rootDir.replaceAll(r'\', '/').replaceFirst(RegExp(r'/+$'), '');
@@ -130,7 +132,7 @@ LcovReport parseLcov(String text, {List<String> rootDirs = const []}) {
     final open = record;
     if (line.startsWith('SF:')) {
       closeRecord();
-      final path = _normalizePath(line.substring(3), rootDirs);
+      final path = normalizeLcovPath(line.substring(3), rootDirs);
       record = _OpenRecord(files.putIfAbsent(path, _Accumulator.new));
     } else if (line == 'end_of_record') {
       closeRecord();
@@ -211,7 +213,7 @@ LcovFile _summarize(_Accumulator file) {
 /// The record of [gatePath] in [report], or `null` when it has none. The path
 /// is matched the way [judgeLcov] matches it.
 LcovFile? lcovFileOf(LcovReport report, String gatePath) =>
-    report.files[_normalizePath(gatePath)];
+    report.files[normalizeLcovPath(gatePath)];
 
 /// The verdict for one gate. The counts are 0 when the gate has no record.
 class LcovGateResult {

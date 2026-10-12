@@ -96,6 +96,11 @@ gates in other time zones. The README has the steps under "Upgrading from
   file of the package the two reach) are run; when none does, no test is
   started. A zone that is not an entry of the time zone database of the
   machine is refused.
+- `test --selfcheck`: the run of the tests that `test` judges is also the
+  negative control of `selfcheck`, with a probe in every gate. One run of
+  the test suite in place of two. The entries of the probes are taken out
+  of the tracefile before it is judged and left behind; what is left is the
+  tracefile the command writes without probes.
 - `mutation --not-evaluable` and `mutation-result --not-evaluable` list the
   mutants that could not be evaluated, with the message of the compiler when
   the report has it. Without the option they are counted, as before.

@@ -220,6 +220,25 @@ void main() {
     expect(parseArgs(['mutation', '--gate', 'a']).zones, isEmpty);
   });
 
+  test('--selfcheck, for test only', () {
+    expect(parseArgs(['test']).selfcheck, isFalse);
+    final args = parseArgs(['test', '--selfcheck', '--file', 'x.info']);
+    expect(
+      (args.selfcheck, args.file, args.notEvaluable),
+      (true, 'x.info', false),
+    );
+    expect(args.mode, isNull);
+    expect(parseArgs(['mutation', '--not-evaluable']).selfcheck, isFalse);
+    expect(
+      () => parseArgs(['test', '--selfcheck=1']),
+      usageError('--selfcheck does not take a value'),
+    );
+    expect(
+      () => parseArgs(['selfcheck', '--selfcheck']),
+      usageError('unknown argument for selfcheck: --selfcheck'),
+    );
+  });
+
   test('mutation-result takes --dir and --report', () {
     final args = parseArgs(['mutation-result', '--report=r.json']);
     expect((args.command, args.report), ('mutation-result', 'r.json'));

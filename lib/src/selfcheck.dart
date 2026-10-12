@@ -154,3 +154,65 @@ String? judgeProbe(ProbedGate gate, LcovReport report, LcovVerdict verdict) {
   }
   return null;
 }
+
+/// A line entry and a branch entry that say "not executed", and the total
+/// of the lines of a record, as Dart writes them.
+final _unexecutedLine = RegExp(r'^DA:(\d+),0$');
+final _untakenBranch = RegExp(r'^BRDA:(\d+),[^,]*,[^,]*,(0|-)$');
+final _linesFound = RegExp(r'^LF:(\d+)$');
+
+/// The tracefile of a run with probes in the gates, as the same run would
+/// have written it without them: for each gate of [probes], the line entry
+/// and the branch entry of the probe are taken out of the record of the
+/// gate, and its `LF:` total is one less.
+///
+/// That is all a probe adds to a tracefile: it is a function at the end of
+/// the file that nothing calls, so it moves no other line and no other
+/// count. Only an entry that says "not executed" is taken out; a probe that
+/// is reported as executed stays, and fails the gate.
+///
+/// [rootDirs] are the directories a record may have in front of its path,
+/// as for the judgement. Line ends are kept as they are.
+String tracefileWithoutProbes(
+  String text,
+  List<ProbedGate> probes, {
+  List<String> rootDirs = const [],
+}) {
+  final lineOf = {
+    for (final probe in probes) normalizeLcovPath(probe.path): probe.line,
+  };
+  final kept = <String>[];
+  // The line of the probe of the record that is being read, when it is the
+  // record of a gate, and how many line entries were taken out of it.
+  int? probeLine;
+  late int removed;
+  for (final raw in text.split('\n')) {
+    final line = raw.trim();
+    if (line.startsWith('SF:')) {
+      probeLine = lineOf[normalizeLcovPath(line.substring(3), rootDirs)];
+      removed = 0;
+    } else if (line == 'end_of_record') {
+      probeLine = null;
+    } else {
+      // In a record that is not of a gate no entry is at "the line of the
+      // probe", and nothing was taken out.
+      final entry =
+          _unexecutedLine.firstMatch(line) ?? _untakenBranch.firstMatch(line);
+      if (entry is RegExpMatch && int.parse(entry[1]!) == probeLine) {
+        if (line.startsWith('D')) {
+          removed++;
+        }
+        continue;
+      }
+      final found = _linesFound.firstMatch(line);
+      if (found is RegExpMatch) {
+        kept.add(
+          raw.replaceFirst(found[1]!, '${int.parse(found[1]!) - removed}'),
+        );
+        continue;
+      }
+    }
+    kept.add(raw);
+  }
+  return kept.join('\n');
+}

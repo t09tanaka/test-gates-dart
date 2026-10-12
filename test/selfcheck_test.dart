@@ -272,4 +272,156 @@ void main() {
       );
     });
   });
+
+  group('tracefileWithoutProbes', () {
+    const probes = [
+      ProbedGate(path: 'lib/a.dart', line: 9),
+      ProbedGate(path: './lib/b.dart', line: 4),
+    ];
+    // As Dart writes a record: the lines, the totals, the branches.
+    const plain =
+        'SF:lib/a.dart\nDA:1,2\nDA:5,1\nLF:2\nLH:2\n'
+        'BRDA:1,0,0,2\nBRDA:5,0,0,1\nend_of_record\n'
+        'SF:lib/b.dart\nDA:2,1\nLF:1\nLH:1\nBRDA:2,0,0,1\nend_of_record\n'
+        'SF:lib/c.dart\nDA:9,0\nLF:1\nLH:0\nBRDA:9,0,0,0\nend_of_record\n';
+    const probed =
+        'SF:lib/a.dart\nDA:1,2\nDA:5,1\nDA:9,0\nLF:3\nLH:2\n'
+        'BRDA:1,0,0,2\nBRDA:5,0,0,1\nBRDA:9,0,0,0\nend_of_record\n'
+        'SF:lib/b.dart\nDA:2,1\nDA:4,0\nLF:2\nLH:1\n'
+        'BRDA:2,0,0,1\nBRDA:4,0,0,0\nend_of_record\n'
+        'SF:lib/c.dart\nDA:9,0\nLF:1\nLH:0\nBRDA:9,0,0,0\nend_of_record\n';
+
+    test('the entries of the probes are taken out and LF is one less: the '
+        'tracefile of the run without probes, byte for byte', () {
+      expect(tracefileWithoutProbes(probed, probes), plain);
+    });
+
+    test('a file that is no gate keeps an entry at the same line number', () {
+      expect(
+        tracefileWithoutProbes(probed, probes),
+        contains('SF:lib/c.dart\nDA:9,0\nLF:1\nLH:0\nBRDA:9,0,0,0\n'),
+      );
+    });
+
+    test('a tracefile without probes is left as it is', () {
+      expect(tracefileWithoutProbes(plain, probes), plain);
+      expect(tracefileWithoutProbes('', probes), '');
+      expect(tracefileWithoutProbes(probed, const []), probed);
+    });
+
+    test('absolute paths, as dart test writes them, and CRLF', () {
+      final absolute = probed
+          .replaceAll('SF:lib/', 'SF:/work/app/lib/')
+          .replaceAll('\n', '\r\n');
+      expect(
+        tracefileWithoutProbes(absolute, probes, rootDirs: ['/work/app']),
+        plain
+            .replaceAll('SF:lib/', 'SF:/work/app/lib/')
+            .replaceAll('\n', '\r\n'),
+      );
+      // Without the directory the records are those of other files.
+      expect(tracefileWithoutProbes(absolute, probes), absolute);
+    });
+
+    test('a probe that is reported as executed stays, and so does its '
+        'total', () {
+      const executed =
+          'SF:lib/a.dart\nDA:9,1\nLF:1\nLH:1\nBRDA:9,0,0,1\nend_of_record\n';
+      expect(tracefileWithoutProbes(executed, probes), executed);
+      const half =
+          'SF:lib/a.dart\nDA:9,0\nLF:1\nLH:0\nBRDA:9,0,0,3\nend_of_record\n';
+      expect(
+        tracefileWithoutProbes(half, probes),
+        'SF:lib/a.dart\nLF:0\nLH:0\nBRDA:9,0,0,3\nend_of_record\n',
+      );
+      const otherHalf =
+          'SF:lib/a.dart\nDA:9,2\nLF:1\nLH:1\nBRDA:9,0,0,0\nend_of_record\n';
+      expect(
+        tracefileWithoutProbes(otherHalf, probes),
+        'SF:lib/a.dart\nDA:9,2\nLF:1\nLH:1\nend_of_record\n',
+      );
+    });
+
+    test('a branch that was never reached ("-") is taken out as well', () {
+      expect(
+        tracefileWithoutProbes(
+          'SF:lib/a.dart\nDA:9,0\nBRDA:9,0,0,-\nend_of_record\n',
+          probes,
+        ),
+        'SF:lib/a.dart\nend_of_record\n',
+      );
+    });
+
+    test('only entries of the line of the probe, and only whole ones', () {
+      const others =
+          'SF:lib/a.dart\nDA:90,0\nDA:19,0\nDA:9\nDA:9,0,x\nDA:x,0\n'
+          'DA:9,00\nDA:9,-\nXDA:9,0\nDA:9,0X\nFNDA:9,0\n'
+          'BRDA:90,0,0,0\nBRDA:9,0,0\nBRDA:9,0,0,0,0\nBRDA:9,0,0,00\n'
+          'XBRDA:9,0,0,0\nBRDA:9,0,0,0X\nLF:x\nLF:3x\nXLF:3\nLH:0\n'
+          'end_of_record\n';
+      expect(tracefileWithoutProbes(others, probes), others);
+    });
+
+    test('the total counts lines, not branches, wherever it is in the '
+        'record', () {
+      expect(
+        tracefileWithoutProbes(
+          'SF:lib/a.dart\nBRDA:9,0,0,0\nBRDA:9,1,0,-\nDA:9,0\nLF:3\n'
+          'end_of_record\n',
+          probes,
+        ),
+        'SF:lib/a.dart\nLF:2\nend_of_record\n',
+      );
+      // A total in front of the entries is not changed by them.
+      expect(
+        tracefileWithoutProbes(
+          'SF:lib/a.dart\nLF:3\nDA:9,0\nend_of_record\n',
+          probes,
+        ),
+        'SF:lib/a.dart\nLF:3\nend_of_record\n',
+      );
+    });
+
+    test('the totals of a record that lost nothing, and of a file that is '
+        'no gate, stay as they are', () {
+      const text =
+          'SF:lib/a.dart\nDA:1,1\nLF:1\nLH:1\nend_of_record\n'
+          'SF:lib/c.dart\nDA:9,0\nLF:1\nend_of_record\n'
+          'SF:lib/b.dart\nDA:4,0\nLF:1\nend_of_record\n'
+          'SF:lib/a.dart\nDA:1,1\nLF:1\nend_of_record\n';
+      expect(
+        tracefileWithoutProbes(text, probes),
+        'SF:lib/a.dart\nDA:1,1\nLF:1\nLH:1\nend_of_record\n'
+        'SF:lib/c.dart\nDA:9,0\nLF:1\nend_of_record\n'
+        'SF:lib/b.dart\nLF:0\nend_of_record\n'
+        'SF:lib/a.dart\nDA:1,1\nLF:1\nend_of_record\n',
+      );
+    });
+
+    test('the line of a probe counts in the record of its gate only, and '
+        'not behind the end of that record', () {
+      const text =
+          'SF:lib/a.dart\nDA:4,0\nLF:1\nend_of_record\nDA:9,0\nLF:5\n'
+          'SF:lib/b.dart\nDA:9,0\nDA:4,0\nLF:2\nend_of_record\n';
+      expect(
+        tracefileWithoutProbes(text, probes),
+        'SF:lib/a.dart\nDA:4,0\nLF:1\nend_of_record\nDA:9,0\nLF:5\n'
+        'SF:lib/b.dart\nDA:9,0\nLF:1\nend_of_record\n',
+      );
+    });
+
+    test('several records of one gate (merged tracefiles): each loses the '
+        'probe, and each total its own', () {
+      const text =
+          'SF:lib/a.dart\nDA:9,0\nLF:4\nend_of_record\n'
+          'SF:lib/a.dart\nDA:1,1\nLF:7\nend_of_record\n'
+          'SF:lib/a.dart\nDA:9,0\nDA:9,0\nLF:12\nend_of_record\n';
+      expect(
+        tracefileWithoutProbes(text, probes),
+        'SF:lib/a.dart\nLF:3\nend_of_record\n'
+        'SF:lib/a.dart\nDA:1,1\nLF:7\nend_of_record\n'
+        'SF:lib/a.dart\nLF:10\nend_of_record\n',
+      );
+    });
+  });
 }
