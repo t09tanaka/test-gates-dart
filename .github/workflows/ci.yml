@@ -55,6 +55,7 @@ jobs:
           dart run test_gates test
           dart run test_gates selfcheck
           dart run test_gates timezones --all
+          dart run test_gates all --selfcheck --no-mutation
       - name: The example, mutation test
         if: matrix.sdk == 'stable'
         working-directory: example

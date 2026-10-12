@@ -96,6 +96,11 @@ gates in other time zones. The README has the steps under "Upgrading from
   file of the package the two reach) are run; when none does, no test is
   started. A zone that is not an entry of the time zone database of the
   machine is refused.
+- `test_gates all [--selfcheck] [--force] [--no-mutation]`: `check`, `test`,
+  `timezones` and `mutation` in one start of the tool, one after the other,
+  until the first that fails; its exit code is the one of `all`. Each check
+  is the command of that name, with its output and its verdict. What it
+  saves is the start of the tool for every check but the first.
 - `test --selfcheck`: the run of the tests that `test` judges is also the
   negative control of `selfcheck`, with a probe in every gate. One run of
   the test suite in place of two. The entries of the probes (`DA:`, `BRDA:`,
@@ -136,6 +141,11 @@ gates in other time zones. The README has the steps under "Upgrading from
   have a mutant in it.
 - With two jobs or more (`dart_mutant` decides; `-- --jobs <n>`), the gates
   are not changed in place: the mutants are put into working copies.
+- `check`, `lcov` and `mutation-result` end with a line and exit code 1
+  when a file cannot be read (a gate without read permission). They ended
+  with an unhandled error.
+- `mutation` started from a compiled executable of the tool looks for
+  `dart pub global run dart_mutant` with the `dart` on `PATH`.
 - When `dart_mutant` is not found, the message says what each command that
   was tried did: that it could not be started, or its exit code and the
   first line it printed.

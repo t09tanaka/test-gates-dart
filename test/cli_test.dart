@@ -94,4 +94,68 @@ void main() {
       ]);
     });
   });
+
+  group('runAll', () {
+    const steps = [
+      ['check', '--dir', 'app'],
+      ['test', '--selfcheck', '--dir', 'app'],
+      ['timezones', '--dir', 'app'],
+      ['mutation', '--force', '--dir', 'app'],
+    ];
+    final io = Io(out: (line) => out.add(line), err: (line) => err.add(line));
+
+    test('every step in order, each once, and a last line that names '
+        'them', () async {
+      final ran = <List<String>>[];
+      expect(
+        await runAll(steps, io, (step) async {
+          ran.add(step);
+          return 0;
+        }),
+        0,
+      );
+      expect(ran, steps);
+      expect(out, [
+        'test_gates all: OK (check, test --selfcheck, timezones, mutation '
+            '--force)',
+      ]);
+      expect(err, isEmpty);
+    });
+
+    for (final (failing, code, behind) in [
+      (0, 1, '. Not run: test --selfcheck, timezones, mutation --force'),
+      (1, 2, '. Not run: timezones, mutation --force'),
+      (2, 130, '. Not run: mutation --force'),
+      (3, 137, ''),
+    ]) {
+      test('step ${failing + 1} ends with $code: that is the exit code, and '
+          'no step behind it is run', () async {
+        final ran = <String>[];
+        expect(
+          await runAll(steps, io, (step) async {
+            ran.add(step.first);
+            return ran.length == failing + 1 ? code : 0;
+          }),
+          code,
+        );
+        expect(ran, [for (final step in steps.take(failing + 1)) step.first]);
+        expect(out, isEmpty);
+        final shown = steps[failing]
+            .takeWhile((argument) => argument != '--dir')
+            .join(' ');
+        expect(err, [
+          'test_gates all: stopped at "$shown" (exit code $code)$behind',
+        ]);
+      });
+    }
+
+    test('no step: nothing to run', () async {
+      expect(await runAll(const [], io, (_) async => 1), 0);
+      expect(out, ['test_gates all: OK ()']);
+    });
+
+    test('all waits for processes: run alone does not take it', () {
+      expect(() => cli(['all']), throwsStateError);
+    });
+  });
 }

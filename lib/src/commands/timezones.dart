@@ -225,9 +225,10 @@ Future<int> runTimezones(
         signals: signals,
         environment: {'TZ': zone.name},
       );
-      if (result.signal != null) {
+      final signal = result.signal ?? signals.signal;
+      if (signal != null) {
         io.err('$executable timezones: interrupted');
-        return signalExitCode(result.signal!);
+        return signalExitCode(signal);
       }
       if (result.exitCode == null) {
         io.err(

@@ -28,6 +28,37 @@ void main() {
       ]);
     });
 
+    test('a program that was compiled into an executable of its own is not '
+        'dart: the dart on PATH is used', () {
+      for (final executable in [
+        '/work/app/build/test_gates',
+        'build/test_gates.exe',
+        '/sdk/bin/dartaotruntime',
+        '/sdk/bin/dart2',
+        '/sdk/bin/mydart',
+        '/sdk/dart/tool',
+        'dartx.exe',
+        '',
+      ]) {
+        expect(dartMutantCommands(executable).last, [
+          'dart',
+          'pub',
+          'global',
+          'run',
+          'dart_mutant',
+        ], reason: executable);
+      }
+      for (final executable in [
+        'dart',
+        'dart.exe',
+        r'C:\sdk\bin\dart.exe',
+        '/sdk/bin/dart',
+        'bin/dart',
+      ]) {
+        expect(dartMutantCommands(executable).last.first, executable);
+      }
+    });
+
     test('the command that installs the tool', () {
       expect(dartMutantInstall, 'dart pub global activate dart_mutant');
     });

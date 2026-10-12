@@ -25,10 +25,13 @@ Commands:
   timezones [-- <command>]    Run the tests of the gates that name DateTime in other time zones
   mutation [-- <options>]     Mutation test of the gates (or of --gate <path>): runs dart_mutant, then mutation-result
   mutation-result             Judge an existing mutation report (mutation-testing-elements JSON schema)
+  all                         check, test, timezones and mutation in one start, until the first that fails
 
 Options:
   --dir <package>             Directory that holds test-gates.json (default: .)
   --file <path>               lcov, test, selfcheck: tracefile (default: settings.lcov.file)
+  --selfcheck, --force        all: handed to test and to mutation
+  --no-mutation               all: leave the mutation test out
   --selfcheck                 test: the same run is also the negative control (selfcheck), with its
                               probes in the gates; one run of the tests in place of two
   --all | --first             selfcheck: every gate (default) or only the first
@@ -49,6 +52,35 @@ Exit codes: 0 passed, 1 violations found, 2 wrong usage or unusable test-gates.j
 (mutation: or dart_mutant is missing or not a supported version),
 130 / 143 / 129 interrupted by SIGINT / SIGTERM / SIGHUP (test, selfcheck, timezones, mutation)
 ''';
+
+/// Runs the checks of `all` ([steps], see `stepsOfAll`) one after the other
+/// with [runStep], and stops at the first that does not end with 0. Its
+/// exit code is the one of `all`; the checks behind it are not run.
+///
+/// Nothing is kept from one check for the next: each reads test-gates.json
+/// and the files of the package itself, as it does when it is started
+/// alone. `test --selfcheck` and `mutation` change files while they run.
+Future<int> runAll(
+  List<List<String>> steps,
+  Io io,
+  Future<int> Function(List<String> step) runStep,
+) async {
+  String shown(List<String> step) =>
+      step.takeWhile((argument) => argument != '--dir').join(' ');
+  for (final (index, step) in steps.indexed) {
+    final code = await runStep(step);
+    if (code != 0) {
+      final behind = steps.sublist(index + 1).map(shown).toList();
+      io.err(
+        '$executable all: stopped at "${shown(step)}" (exit code $code)'
+        '${behind.isEmpty ? '' : '. Not run: ${behind.join(', ')}'}',
+      );
+      return code;
+    }
+  }
+  io.out('$executable all: OK (${steps.map(shown).join(', ')})');
+  return 0;
+}
 
 int _usage(UsageError error, Io io) {
   io.err('$executable: ${error.message}\n');
@@ -95,6 +127,12 @@ Future<int> runAsync(List<String> argv, Io io) async {
             args.rest,
             io,
           );
+        case 'all':
+          return await runAll(
+            stepsOfAll(args),
+            io,
+            (step) => runAsync(step, io),
+          );
         case 'timezones':
           return await runTimezones(
             args.dir,
@@ -115,20 +153,23 @@ Future<int> runAsync(List<String> argv, Io io) async {
           );
       }
     }
+    // The commands that only read files. Inside the try as well: a file
+    // they cannot read ends them like the others, with a line and exit
+    // code 1, whether they are started alone or by `all`.
+    return run(argv, io);
   } on UsageError catch (error) {
     return _usage(error, io);
   } on ManifestError catch (error) {
     return _unusable(error, io);
   } on FileSystemException catch (error) {
-    // A tracefile, a report or a plan that cannot be deleted, read or
-    // written.
+    // A source file, a tracefile, a report or a plan that cannot be
+    // deleted, read or written.
     io.err(
       '$executable: ${error.osError?.message ?? error.message}'
       '${error.path == null ? '' : ' (${error.path})'}',
     );
     return 1;
   }
-  return run(argv, io);
 }
 
 /// Runs the command line and returns the exit code. The commands that wait
@@ -155,9 +196,8 @@ int run(List<String> argv, Io io) {
         only: args.gates,
         listNotEvaluable: args.notEvaluable,
       ),
-      'test' || 'selfcheck' || 'timezones' || 'mutation' => throw StateError(
-        '${args.command} waits for a process: call runAsync',
-      ),
+      'test' || 'selfcheck' || 'timezones' || 'mutation' || 'all' =>
+        throw StateError('${args.command} waits for a process: call runAsync'),
       _ => throw UsageError('no command given'),
     };
   } on UsageError catch (error) {
