@@ -144,10 +144,10 @@ String? judgeProbe(ProbedGate gate, LcovReport report, LcovVerdict verdict) {
     return 'the probe at line $line is not reported as a branch that was not '
         'taken. Collect the coverage with --branch-coverage';
   }
-  final result = verdict.results
-      .where((result) => result.path == gate.path)
-      .firstOrNull;
-  if (result == null || result.ok) {
+  final failed = verdict.results.any(
+    (result) => result.path == gate.path && !result.ok,
+  );
+  if (!failed) {
     return 'the probe at line $line was not executed, and the gate passed';
   }
   return null;

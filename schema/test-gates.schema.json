@@ -74,7 +74,7 @@
       "additionalProperties": false,
       "properties": {
         "mutator": {
-          "description": "Stryker mutator name, e.g. ConditionalExpression.",
+          "description": "Name of the mutator as the mutation report has it, e.g. ConditionalExpression.",
           "$ref": "#/definitions/nonEmptyString"
         },
         "original": {
@@ -82,7 +82,7 @@
           "$ref": "#/definitions/nonEmptyString"
         },
         "replacement": {
-          "description": "The text Stryker puts in its place. May be empty.",
+          "description": "The text the mutation tool puts in its place. May be empty.",
           "type": "string"
         },
         "reason": {
@@ -315,7 +315,7 @@
               "$ref": "#/definitions/nonEmptyString"
             },
             "reportFile": {
-              "description": "Where the mutation report (mutation-testing-elements / Stryker JSON schema) is written by `mutation` and read by `mutation-result`. The Dart tool uses this key of upstream for its own report.",
+              "description": "Where the mutation report (mutation-testing-elements / Stryker JSON schema) is written by `mutation` and read by `mutation-result`. The Dart tool uses this key of upstream for the report it has dart_mutant write.",
               "$ref": "#/definitions/nonEmptyString",
               "default": "reports/mutation/mutation.json"
             }

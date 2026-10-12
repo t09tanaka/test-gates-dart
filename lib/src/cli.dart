@@ -21,8 +21,8 @@ Commands:
   check                       Static checks: the list, the tests, and that every gate is a pure module
   test [-- <command>]         Run the tests with coverage (settings.gateCommand), then lcov
   selfcheck [-- <command>]    Negative control: with unexecuted code in it, a gate must fail
-  mutation [-- <command>]     Mutation test of the gates (or of --gate <path>), then mutation-result
-  mutation-result             Judge an existing mutation report (Stryker JSON schema)
+  mutation [-- <options>]     Mutation test of the gates (or of --gate <path>): runs dart_mutant, then mutation-result
+  mutation-result             Judge an existing mutation report (mutation-testing-elements JSON schema)
 
 Options:
   --dir <package>             Directory that holds test-gates.json (default: .)
@@ -31,10 +31,13 @@ Options:
   --report <path>             mutation, mutation-result: the report (default: settings.stryker.reportFile)
   --force                     mutation: run every mutant again, also of a gate unchanged since the last run
   --gate <path>               mutation, mutation-result: only this gate (may be given more than once)
+  -- <options>                mutation: handed to "dart_mutant run" as they are (--jobs <n>, --shard <i>/<n>,
+                              --schemata, --html <file>, and behind a second "--" the command that runs test files)
   -h, --help                  Show this help
   -v, --version               Show the version
 
-Exit codes: 0 passed, 1 violations found, 2 wrong usage or unusable test-gates.json,
+Exit codes: 0 passed, 1 violations found, 2 wrong usage or unusable test-gates.json
+(mutation: or dart_mutant is missing or not a supported version),
 130 / 143 / 129 interrupted by SIGINT / SIGTERM / SIGHUP (test, selfcheck, mutation)
 ''';
 
@@ -90,8 +93,8 @@ Future<int> runAsync(List<String> argv, Io io) async {
   } on ManifestError catch (error) {
     return _unusable(error, io);
   } on FileSystemException catch (error) {
-    // A tracefile or a report that cannot be deleted, read or written. The
-    // gates have been put back by then.
+    // A tracefile, a report or a plan that cannot be deleted, read or
+    // written.
     io.err(
       '$executable: ${error.osError?.message ?? error.message}'
       '${error.path == null ? '' : ' (${error.path})'}',

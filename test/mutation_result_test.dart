@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:test/test.dart';
 import 'package:test_gates/src/manifest.dart';
@@ -144,6 +145,13 @@ void main() {
         'column 1 of a later line', () {
       expect(slice('abc', 1, 1, 1, 3), 'ab');
       expect(slice('one\ntwo', 1, 2, 2, 1), 'ne\n');
+    });
+
+    test('a column behind the end of its line is the end of the line', () {
+      expect(slice('ab\ncd', 1, 9, 2, 2), '\nc');
+      expect(slice('ab\ncd', 1, 2, 2, 9), 'b\ncd');
+      expect(slice('abc', 1, 7, 1, 9), '');
+      expect(slice('abc', 1, 2, 1, 9), 'bc');
     });
 
     test('returns null for a multi-line range that ends at column 0', () {
@@ -1151,6 +1159,193 @@ void main() {
     });
   });
 
+  group('a report of dart_mutant', () {
+    // Written by dart_mutant 0.1.0 for test/fixtures/mutation/package (a
+    // function with one weak test): `dart_mutant run --plan <plan> --report
+    // <this file>`. test/commands/real_mutation_test.dart runs the tool on
+    // the same package.
+    final text = File(
+      'test/fixtures/mutation/dart_mutant_report.json',
+    ).readAsStringSync();
+    const path = 'lib/steps.dart';
+
+    MutationVerdict judged(List<EquivalentMutant> equivalentMutants) {
+      final report = parseMutationReport(text);
+      return judgeMutationReport(
+        gates: [gate(path: path, equivalentMutants: equivalentMutants)],
+        report: report,
+        readSource: (_) => report.files[path]!.source,
+      );
+    }
+
+    test('is read as it is: the mutators that use types, a replacement that '
+        'is empty, and the same change in several places', () {
+      final verdict = judged(const []);
+      expect(verdict.violations, isEmpty);
+      expect(numbers(verdict.summary), [14, 5, 0, 0, 0, 9, 0]);
+      expect(
+        [
+          for (final survivor in verdict.survivors)
+            formatListedMutant(survivor),
+        ],
+        [
+          'lib/steps.dart:4:17 / ConditionalExpression / from < 0 → false '
+              '(Survived)',
+          'lib/steps.dart:4:22 / EqualityOperator / < → <= / occurrence 1 of '
+              '2 (Survived)',
+          'lib/steps.dart:4:24 / NumberLiteral / 0 → 1 / occurrence 1 of 4 '
+              '(Survived)',
+          'lib/steps.dart:4:28 / NumberLiteral / 0 → 1 / occurrence 2 of 4 '
+              '(Survived)',
+          'lib/steps.dart:5:16 / ConditionalExpression / to < 0 → false '
+              '(Survived)',
+          'lib/steps.dart:5:19 / EqualityOperator / < → <= / occurrence 2 of '
+              '2 (Survived)',
+          'lib/steps.dart:5:21 / NumberLiteral / 0 → 1 / occurrence 3 of 4 '
+              '(Survived)',
+          'lib/steps.dart:5:25 / NumberLiteral / 0 → 1 / occurrence 4 of 4 '
+              '(Survived)',
+          'lib/steps.dart:6:24 / MethodExpression / .abs() →  (Survived)',
+        ],
+      );
+    });
+
+    test('the entries that are printed for its survivors, pasted into '
+        'test-gates.json with a reason, allow exactly those mutants', () {
+      final survivors = judged(const []).survivors;
+      final pasted = parsedGate({
+        'equivalentMutants': [
+          for (final survivor in survivors)
+            // As the command prints it, and as a person fills it in.
+            (jsonDecode(jsonEncode(survivor.allowance)) as Map<String, Object?>)
+              ..['reason'] = 'for the test',
+        ],
+      });
+      expect(pasted.problems, isEmpty);
+      expect(
+        [
+          for (final entry in pasted.gate.equivalentMutants)
+            (entry.mutator, entry.replacement, entry.occurrence),
+        ],
+        [
+          ('ConditionalExpression', 'false', null),
+          ('EqualityOperator', '<=', 1),
+          ('NumberLiteral', '1', 1),
+          ('NumberLiteral', '1', 2),
+          ('ConditionalExpression', 'false', null),
+          ('EqualityOperator', '<=', 2),
+          ('NumberLiteral', '1', 3),
+          ('NumberLiteral', '1', 4),
+          ('MethodExpression', '', null),
+        ],
+      );
+      final verdict = judged(pasted.gate.equivalentMutants);
+      expect(verdict.violations, isEmpty);
+      expect(verdict.survivors, isEmpty);
+      expect(numbers(verdict.summary), [14, 5, 0, 9, 0, 0, 0]);
+    });
+
+    test('one pasted entry less leaves exactly that mutant', () {
+      final entries = [
+        for (final survivor in judged(const []).survivors)
+          EquivalentMutant(
+            mutator: survivor.mutator,
+            original: survivor.original,
+            replacement: survivor.replacement,
+            occurrence: survivor.sameKeyCount > 1 ? survivor.occurrence : null,
+            reason: 'for the test',
+          ),
+      ];
+      final verdict = judged([...entries.take(3), ...entries.skip(4)]);
+      expect(verdict.violations, isEmpty);
+      expect(
+        [
+          for (final survivor in verdict.survivors)
+            formatListedMutant(survivor),
+        ],
+        [
+          'lib/steps.dart:4:28 / NumberLiteral / 0 → 1 / occurrence 2 of 4 '
+              '(Survived)',
+        ],
+      );
+    });
+  });
+
+  group('the report of a part of a run (dart_mutant run --shard)', () {
+    String partJson(Object? config) => jsonEncode({
+      'schemaVersion': '2',
+      'config': config,
+      'files': {
+        gatePath: {
+          'source': source,
+          'mutants': [
+            {
+              'mutatorName': 'EqualityOperator',
+              'replacement': 'age > 18',
+              'status': 'Killed',
+              'location': {
+                'start': {'line': 1, 'column': 41},
+                'end': {'line': 1, 'column': 50},
+              },
+            },
+          ],
+        },
+      },
+    });
+
+    MutationVerdict judgedPart(Object? config) => judgeMutationReport(
+      gates: [gate()],
+      report: parseMutationReport(partJson(config)),
+      readSource: (_) => source,
+    );
+
+    test('is refused as a whole, also when every mutant in it is killed', () {
+      final report = parseMutationReport(
+        partJson({
+          'mutatorsVersion': 2,
+          'shard': {'index': 2, 'count': 4, 'notTested': <String>[]},
+        }),
+      );
+      expect(report.part, '2/4');
+      final verdict = judgeMutationReport(
+        gates: [gate()],
+        report: report,
+        readSource: (_) => source,
+      );
+      expect(messages(verdict), [
+        'mutation report: is part 2/4 of a run (--shard), not a result. Put '
+            'the parts together with "dart_mutant merge" and judge the '
+            'report that writes',
+      ]);
+      expect(verdict.survivors, isEmpty);
+      expect(numbers(verdict.summary), [0, 0, 0, 0, 0, 0, 0]);
+    });
+
+    test('1/1 is a part as well', () {
+      expect(
+        messages(
+          judgedPart({
+            'shard': {'index': 1, 'count': 1},
+          }),
+        ).single,
+        startsWith('mutation report: is part 1/1 of a run'),
+      );
+    });
+
+    test('a report without config.shard is the report of a whole run', () {
+      for (final config in [
+        null,
+        {'mutatorsVersion': 2},
+        {'shard': null},
+        'text',
+        {'shard': 'text'},
+      ]) {
+        expect(parseMutationReport(partJson(config)).part, isNull);
+        expect(judgedPart(config).violations, isEmpty, reason: '$config');
+      }
+    });
+  });
+
   group('parseMutationReport', () {
     String reportJson(Object? mutant) => jsonEncode({
       'schemaVersion': '2',
@@ -1270,6 +1465,22 @@ void main() {
           'location': {
             'start': {'line': 1},
             'end': {'line': 1, 'column': 2},
+          },
+        }),
+        contains('mutants[0] must have'),
+      ),
+      (
+        'a mutant that is not an object',
+        reportJson('Killed'),
+        contains('mutants[0] must have mutatorName, status and location'),
+      ),
+      (
+        'a location without an end',
+        reportJson({
+          'mutatorName': 'A',
+          'status': 'Killed',
+          'location': {
+            'start': {'line': 1, 'column': 1},
           },
         }),
         contains('mutants[0] must have'),

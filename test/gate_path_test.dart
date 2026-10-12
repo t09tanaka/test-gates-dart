@@ -13,6 +13,8 @@ void main() {
     test('everything else', () {
       for (final path in [
         '/abs/shipping_fee.dart',
+        '/shipping_fee.dart',
+        '/',
         r'C:\app\shipping_fee.dart',
         'c:/app/shipping_fee.dart',
         r'lib\shipping_fee.dart',

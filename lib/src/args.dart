@@ -23,7 +23,8 @@ class ParsedArgs {
   /// `--report` (mutation, mutation-result).
   String? report;
 
-  /// `--force` (mutation): no result of an earlier run is reused.
+  /// `--force` (mutation): handed to `dart_mutant run`, which then reuses no
+  /// result of an earlier run.
   bool force = false;
 
   /// `--gate` (mutation, mutation-result), once per gate: only these gates
@@ -31,7 +32,7 @@ class ParsedArgs {
   List<String> gates = const [];
 
   /// What follows `--`. test, selfcheck: the command to run instead of
-  /// `settings.gateCommand`. mutation: the command that runs test files.
+  /// `settings.gateCommand`. mutation: what is handed to `dart_mutant run`.
   List<String> rest = const [];
 }
 
@@ -55,7 +56,8 @@ const _optionsByCommand = {
   'mutation-result': ['--dir', '--report', '--gate'],
 };
 
-/// The commands that take a command to run after `--`.
+/// The commands that take something after `--`: a command to run, or (for
+/// mutation) the options that are handed to `dart_mutant run`.
 const _commandsWithRest = ['test', 'selfcheck', 'mutation'];
 
 /// Reads the argument at [index] (and its value, when it is given
@@ -76,7 +78,11 @@ int _consume(
     }
     parsed.rest = argv.sublist(index);
     if (parsed.rest.isEmpty) {
-      throw UsageError('"--" must be followed by the command to run');
+      throw UsageError(
+        parsed.command == 'mutation'
+            ? '"--" must be followed by the options for dart_mutant run'
+            : '"--" must be followed by the command to run',
+      );
     }
     return argv.length;
   }

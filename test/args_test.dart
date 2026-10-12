@@ -92,13 +92,17 @@ void main() {
     expect(() => parseArgs(['cover']), usageError('unknown command: cover'));
   });
 
-  test('mutation with its options and the command after "--"', () {
+  test('mutation with its options, and what follows "--" for dart_mutant '
+      'run, untouched', () {
     final args = parseArgs([
       'mutation',
       '--dir=app',
       '--force',
       '--report',
       'r.json',
+      '--',
+      '--jobs',
+      '3',
       '--',
       'fvm',
       'flutter',
@@ -108,7 +112,11 @@ void main() {
       (args.command, args.dir, args.force, args.report),
       ('mutation', 'app', true, 'r.json'),
     );
-    expect(args.rest, ['fvm', 'flutter', 'test']);
+    expect(args.rest, ['--jobs', '3', '--', 'fvm', 'flutter', 'test']);
+    expect(
+      () => parseArgs(['mutation', '--force', '--']),
+      usageError('"--" must be followed by the options for dart_mutant run'),
+    );
     final plain = parseArgs(['mutation']);
     expect((plain.force, plain.report), (false, null));
     expect(plain.rest, isEmpty);

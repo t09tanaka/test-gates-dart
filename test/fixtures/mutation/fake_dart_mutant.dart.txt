@@ -1,0 +1,91 @@
+// Stands in for "dart_mutant" in the tests of `test_gates mutation`. Kept as
+// .txt so that it is not analyzed or formatted with the package; the tests
+// copy it into a temporary directory and run it there, in the package.
+//
+// Usage: dart fake_dart_mutant.dart --version
+//        dart fake_dart_mutant.dart run <options>
+//
+// What it does is read from "fake.json" in the current directory (every key
+// is optional):
+//
+//   "version": "0.1.0"     what --version prints
+//   "versionExit": 0       the exit code of --version
+//   "report": { ... }      written to the path of --report; without it no
+//                          report is written
+//   "exit": 0              the exit code of the run
+//   "killed": true         the run ends itself with SIGKILL
+//   "hang": true           the run writes its pid to "started" and waits
+//                          for SIGINT / SIGTERM / SIGHUP. It then appends
+//                          the signal to "signals.log", takes a second to
+//                          "put files back", writes "put-back" and exits
+//                          with 130 / 143 / 129
+//
+// A run appends its arguments to "runs.log", copies the plan it was given
+// to "plan.seen.json", and the report that was at --report before it wrote
+// its own to "report.before.json".
+import 'dart:convert';
+import 'dart:io';
+
+String? valueOf(List<String> arguments, String name) {
+  final index = arguments.indexOf(name);
+  return index == -1 ? null : arguments[index + 1];
+}
+
+Future<void> main(List<String> arguments) async {
+  final file = File('fake.json');
+  final fake = file.existsSync()
+      ? jsonDecode(file.readAsStringSync()) as Map<String, Object?>
+      : const <String, Object?>{};
+  if (arguments.contains('--version')) {
+    stdout.writeln(fake['version'] ?? '0.1.0');
+    exitCode = fake['versionExit'] as int? ?? 0;
+    return;
+  }
+  File('runs.log').writeAsStringSync(
+    '${arguments.join(' ')}\n',
+    mode: FileMode.append,
+  );
+  final plan = valueOf(arguments, '--plan');
+  if (plan != null) {
+    File(plan).copySync('plan.seen.json');
+  }
+  final report = File(valueOf(arguments, '--report')!);
+  if (report.existsSync()) {
+    report.copySync('report.before.json');
+  }
+  if (fake['hang'] == true) {
+    final signals = [
+      (ProcessSignal.sigint, 130),
+      (ProcessSignal.sigterm, 143),
+      (ProcessSignal.sighup, 129),
+    ];
+    var got = false;
+    for (final (signal, code) in signals) {
+      signal.watch().listen((_) async {
+        File('signals.log').writeAsStringSync(
+          '$signal\n',
+          mode: FileMode.append,
+        );
+        if (got) {
+          return;
+        }
+        got = true;
+        await Future<void>.delayed(const Duration(seconds: 1));
+        File('put-back').writeAsStringSync('yes');
+        exit(code);
+      });
+    }
+    File('started').writeAsStringSync('$pid');
+    await Future<void>.delayed(const Duration(minutes: 5));
+    exit(99);
+  }
+  if (fake.containsKey('report')) {
+    report.parent.createSync(recursive: true);
+    report.writeAsStringSync(jsonEncode(fake['report']));
+  }
+  if (fake['killed'] == true) {
+    Process.killPid(pid, ProcessSignal.sigkill);
+    await Future<void>.delayed(const Duration(minutes: 5));
+  }
+  exitCode = fake['exit'] as int? ?? 0;
+}
