@@ -28,6 +28,7 @@ final _zoneName = RegExp(r'^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$');
   if (requested.isEmpty) {
     return (zones: defaultZones, problem: null);
   }
+  final labels = {for (final zone in defaultZones) zone.name: zone.label};
   final zones = <Zone>[];
   for (final name in requested) {
     if (!_zoneName.hasMatch(name)) {
@@ -39,8 +40,7 @@ final _zoneName = RegExp(r'^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$');
       );
     }
     if (!zones.any((zone) => zone.name == name)) {
-      final known = defaultZones.where((zone) => zone.name == name);
-      zones.add(known.isEmpty ? (name: name, label: name) : known.first);
+      zones.add((name: name, label: labels[name] ?? name));
     }
   }
   return (zones: zones, problem: null);
@@ -62,7 +62,8 @@ final _flutterSdk = RegExp(r'^\s+sdk:\s*flutter\s*(#.*)?$', multiLine: true);
 List<String> zoneTestCommand(String? pubspec, List<String> override) =>
     override.isNotEmpty
     ? override
-    : _flutterSdk.hasMatch((pubspec ?? '').replaceAll('\r\n', '\n'))
+    : pubspec is String &&
+          _flutterSdk.hasMatch(pubspec.replaceAll('\r\n', '\n'))
     ? const ['flutter', 'test', '--no-pub']
     : const ['dart', 'test'];
 

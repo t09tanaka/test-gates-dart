@@ -274,20 +274,20 @@ Map<String, String> gateSources(
 }) {
   final aliases = aliasesFor(packageName, settings.importAliases);
   final sources = {gatePath: source};
+  // Every path once, whether it can be read or not.
+  final asked = {gatePath};
   final queue = [gatePath];
   for (var index = 0; index < queue.length; index++) {
     final path = queue[index];
     for (final imported in parseDartSource(sources[path]!).imports) {
       final target = resolveUri(imported.uri, path, aliases);
-      if (target == null || sources.containsKey(target)) {
-        continue;
+      if (target is String && asked.add(target)) {
+        final content = readSource(target);
+        if (content is String) {
+          sources[target] = content;
+          queue.add(target);
+        }
       }
-      final content = readSource(target);
-      if (content == null) {
-        continue;
-      }
-      sources[target] = content;
-      queue.add(target);
     }
   }
   return sources;

@@ -809,9 +809,9 @@ Measured with Dart 3.13.2 on a Mac with 12 logical processors, `--force`, one ru
 | Package                                    | Gates | Mutants                        | Full run (`--force`) | Test runs at a time |
 | ------------------------------------------ | ----- | ------------------------------ | -------------------- | ------------------- |
 | [`example/`](example)                      | 2     | 69, of which 2 do not compile  | 1 min 1 s            | 1, in place (it has a `path:` dependency) |
-| This package, its own gates                | 14    | 2552, of which 256 do not compile | about 23 min      | 3, in working copies (the default there) |
+| This package, its own gates                | 15    | 2627, of which 261 do not compile | about 24 min      | 3, in working copies (the default there) |
 
-Of the 2552 mutants of this package 2288 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
+Of the 2627 mutants of this package 2358 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
 
 A mutant that compiles costs one start of the test runner on the test of its gate. A second run without `--force` and without a change runs nothing but the timeouts.
 
@@ -1020,7 +1020,7 @@ The pure files above are the gates of this package: [`test-gates.json`](test-gat
 dart run test_gates check             # under a second
 dart run test_gates test              # the whole test suite with coverage
 dart run test_gates selfcheck         # the same suite once more, with a probe in every gate
-dart run test_gates timezones         # nothing to run: no gate of this package names DateTime
+dart run test_gates timezones         # the test of zones.dart, the one gate that names DateTime, in two zones
 dart run test_gates mutation          # only the gates that changed since the last run
 dart run test_gates mutation --gate lib/src/lcov.dart   # one gate, while working on it
 dart run test_gates mutation --force  # everything, before a release

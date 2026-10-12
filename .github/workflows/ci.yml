@@ -44,7 +44,7 @@ jobs:
       - run: dart run test_gates check
       - run: dart run test_gates test
       - run: dart run test_gates selfcheck
-      # No gate of this package names DateTime: --all runs them all the same.
+      # One gate of this package names DateTime: --all runs them all.
       - run: dart run test_gates timezones --all
       # The package as a dependency of another one.
       - name: The example
