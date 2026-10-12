@@ -112,8 +112,7 @@ Coming from 0.1: [Upgrading from 0.1](#upgrading-from-01).
 
    ```bash
    dart run test_gates check
-   dart run test_gates test
-   dart run test_gates selfcheck
+   dart run test_gates test --selfcheck   # the coverage and the negative control, in one run of the tests
    dart run test_gates timezones
    dart run test_gates mutation --force
    ```
@@ -383,7 +382,7 @@ The first line is for reference only: the line coverage of everything in the tra
 | 1         | Violations found, or the tracefile cannot be read                          |
 | 2         | Wrong usage, no tracefile named, or `test-gates.json` is missing, broken or has an unknown key |
 
-## `test_gates test [-- <command>]`
+## `test_gates test [--selfcheck] [-- <command>]`
 
 Runs `settings.gateCommand` and then judges the tracefile exactly as `lcov` does. This is the one command to call from a pre-push hook or from CI:
 
@@ -395,6 +394,34 @@ dart run test_gates test
 - The output of the command goes to the terminal as it is.
 - When the command fails (a failing test), the exit code is 1 and the coverage is not judged.
 - A command after `--` replaces `settings.gateCommand` for this run: `dart run test_gates test -- flutter test --coverage --branch-coverage test/pricing`. `--file` works as for `lcov`.
+
+### One run for the coverage and the negative control: `--selfcheck`
+
+`test` and [`selfcheck`](#test_gates-selfcheck---all----first----command) each run the whole test suite with coverage. `test --selfcheck` runs it once and gives both verdicts:
+
+```bash
+dart run test_gates test --selfcheck
+```
+
+```
+running "dart test --coverage-path=coverage/lcov.info --branch-coverage" with a probe in 2 gate(s)
+  ✓ lib/bulk_discount.dart: with unexecuted code at line 23 the gate fails
+  ✓ lib/shipping_fee.dart: with unexecuted code at line 20 the gate fails
+test_gates selfcheck: OK (2 negative control(s) failed as they should)
+reference: overall line coverage 100.00% (16/16, not gated)
+  ✓ lib/bulk_discount.dart: 10/10 lines, 5/5 branches
+  ✓ lib/shipping_fee.dart: 6/6 lines, 3/3 branches
+test_gates lcov: OK (2 gate(s) at 100% line and branch coverage)
+```
+
+1. The probes of `selfcheck` are appended to the gates, and `settings.gateCommand` is run once.
+2. The negative controls are judged on the tracefile of that run, as `selfcheck` judges them.
+3. The entries of the probes are taken out of the tracefile: for each gate the line entry and the branch entry at the line of its probe, and one off its `LF:` total (with function coverage also the `FN:` / `FNDA:` entries of the probe, and one off `FNF:`). A probe is a function at the end of the file that nothing calls, so that is all it adds; what is left is the tracefile the command writes without probes. `test/commands/real_coverage_test.dart` runs `dart test` both ways and requires the same records. The entries are only taken out when all of them say "not executed"; otherwise they stay, and the gate fails.
+4. That tracefile is left behind and judged as `lcov` judges it. (When the command fails, no tracefile is left: the one it wrote counts the probes.)
+
+The exit code is 0 when every control held and every gate is at 100%. Each of the two verdicts is the one its own command gives; nothing is decided differently. What differs from `test`: the output of the test command is not shown as it comes (it is captured, and its last lines are printed when it fails), and the gates are changed in place for the length of the run, with everything [`selfcheck` says about that](#your-files-during-the-run). `settings.selfcheck.mode: "first"` puts a probe in the first gate only.
+
+What it saves is one of two runs of the tests with coverage: about half the time of `test` followed by `selfcheck`, in [`example/`](example) and for this package.
 
 | Exit code | Meaning                                                                    |
 | --------- | -------------------------------------------------------------------------- |
@@ -1020,8 +1047,8 @@ The pure files above are the gates of this package: [`test-gates.json`](test-gat
 
 ```bash
 dart run test_gates check             # under a second
-dart run test_gates test              # the whole test suite with coverage
-dart run test_gates selfcheck         # the same suite once more, with a probe in every gate
+dart run test_gates test --selfcheck  # the whole test suite with coverage, once, with a probe in every gate
+                                      # (or the two apart: test, then selfcheck)
 dart run test_gates timezones         # the test of zones.dart, the one gate that names DateTime, in two zones
 dart run test_gates mutation          # only the gates that changed since the last run
 dart run test_gates mutation --gate lib/src/lcov.dart   # one gate, while working on it

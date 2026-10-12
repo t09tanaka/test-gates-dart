@@ -7,22 +7,32 @@
 import 'dart:io';
 
 /// One record per source file, as Dart writes it: an entry for every line on
-/// which a function starts. The function of a selfcheck probe is the only one
-/// that is "never called".
+/// which a function starts, then the totals, then the branch entries. The
+/// function of a selfcheck probe is "never called", and so is one whose
+/// line says "untested".
 String measure(List<String> sources, {bool branches = true}) {
   final out = StringBuffer();
   for (final source in sources) {
     out.writeln('SF:$source');
     final lines = File(source).readAsLinesSync();
+    final entries = <(int, int)>[];
     for (var index = 0; index < lines.length; index++) {
       final line = lines[index];
       if (line.startsWith('//') || !line.contains('(')) {
         continue;
       }
-      final hits = line.contains('testGatesSelfcheckProbe') ? 0 : 1;
-      out.writeln('DA:${index + 1},$hits');
-      if (branches) {
-        out.writeln('BRDA:${index + 1},0,0,$hits');
+      final unexecuted =
+          line.contains('testGatesSelfcheckProbe') || line.contains('untested');
+      entries.add((index + 1, unexecuted ? 0 : 1));
+    }
+    for (final (line, hits) in entries) {
+      out.writeln('DA:$line,$hits');
+    }
+    out.writeln('LF:${entries.length}');
+    out.writeln('LH:${entries.where((entry) => entry.$2 > 0).length}');
+    if (branches) {
+      for (final (line, hits) in entries) {
+        out.writeln('BRDA:$line,0,0,$hits');
       }
     }
     out.writeln('end_of_record');

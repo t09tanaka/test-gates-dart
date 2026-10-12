@@ -133,13 +133,20 @@ void _removeLeftovers(LoadedManifest manifest, Io io) {
 ///
 /// Returns the exit code: 0 when every control held, 1 otherwise, 130 / 143 /
 /// 129 when interrupted by SIGINT / SIGTERM / SIGHUP.
+///
+/// With [coverage] (`test --selfcheck`) the same run is also the one the
+/// coverage of the gates is judged on, as `test` judges it: the tracefile is
+/// left behind without the entries of the probes, which is the tracefile
+/// the command writes without them, and is judged as `lcov` does. The exit
+/// code is then 0 only when the controls held and every gate is at 100%.
 Future<int> runSelfcheck(
   String dir,
   String? fileOption,
   String? mode,
   List<String> commandOverride,
-  Io io,
-) async {
+  Io io, {
+  bool coverage = false,
+}) async {
   final manifest = readManifest(dir);
   // Before anything can stop the run: what a killed run left behind.
   _removeLeftovers(manifest, io);
@@ -213,15 +220,31 @@ Future<int> runSelfcheck(
         }
       }
       // The tracefile of this run counts the probes. Leaving it behind would
-      // fail the next `test_gates lcov`.
+      // fail the next `test_gates lcov`. Without [coverage] the one of
+      // before the run is put back. With it, this run is the coverage run:
+      // its tracefile stays, without the entries of the probes, and when it
+      // wrote none, none is left, as after `test`.
       try {
         deleteTracefile(tracefilePath);
-        if (tracefileBefore != null) {
-          File(tracefilePath).writeAsBytesSync(tracefileBefore);
+        final text = tracefileText;
+        if (!coverage) {
+          if (tracefileBefore != null) {
+            File(tracefilePath).writeAsBytesSync(tracefileBefore);
+          }
+        } else if (text != null) {
+          final resolved = Directory(manifest.dir).resolveSymbolicLinksSync();
+          File(tracefilePath).writeAsStringSync(
+            tracefileWithoutProbes(
+              text,
+              [for (final gate in injected) gate.gate],
+              rootDirs: [manifest.dir, resolved],
+            ),
+          );
         }
       } on FileSystemException catch (error) {
         restoreMessages.add(
-          '$tracefile: cannot put back the tracefile of before the run '
+          '$tracefile: cannot '
+          '${coverage ? 'write the tracefile of the run' : 'put back the tracefile of before the run'} '
           '(${error.osError?.message ?? error.message})',
         );
       }
@@ -293,16 +316,26 @@ Future<int> runSelfcheck(
       io.err('  ✗ ${gate.path}: $reason');
     }
   }
-  if (failures.isNotEmpty || restoreMessages.isNotEmpty) {
+  final held = failures.isEmpty && restoreMessages.isEmpty;
+  if (held) {
+    io.out(
+      '$executable selfcheck: OK (${targets.length} negative control(s) '
+      'failed as they should)',
+    );
+  } else {
     io.err(
       '$executable selfcheck: FAILED (${failures.length} of ${targets.length} '
       'negative control(s))',
     );
+  }
+  if (!coverage) {
+    return held ? 0 : 1;
+  }
+  // The same run, judged as `test` judges it. When nothing was measured
+  // there is no tracefile, and that was said above.
+  if (!File(tracefilePath).existsSync()) {
     return 1;
   }
-  io.out(
-    '$executable selfcheck: OK (${targets.length} negative control(s) failed '
-    'as they should)',
-  );
-  return 0;
+  final covered = judgeTracefile(manifest, tracefile, io);
+  return held && covered == 0 ? 0 : 1;
 }

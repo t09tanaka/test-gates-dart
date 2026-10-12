@@ -29,6 +29,8 @@ Commands:
 Options:
   --dir <package>             Directory that holds test-gates.json (default: .)
   --file <path>               lcov, test, selfcheck: tracefile (default: settings.lcov.file)
+  --selfcheck                 test: the same run is also the negative control (selfcheck), with its
+                              probes in the gates; one run of the tests in place of two
   --all | --first             selfcheck: every gate (default) or only the first
   --all                       timezones: every gate, also one that does not name DateTime
   --zone <name>               timezones: a time zone to run in (may be given more than once;
@@ -75,7 +77,16 @@ Future<int> runAsync(List<String> argv, Io io) async {
     if (!args.version && !args.help) {
       switch (args.command) {
         case 'test':
-          return await runTest(args.dir, args.file, args.rest, io);
+          return args.selfcheck
+              ? await runSelfcheck(
+                  args.dir,
+                  args.file,
+                  null,
+                  args.rest,
+                  io,
+                  coverage: true,
+                )
+              : await runTest(args.dir, args.file, args.rest, io);
         case 'selfcheck':
           return await runSelfcheck(
             args.dir,

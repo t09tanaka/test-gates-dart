@@ -154,3 +154,133 @@ String? judgeProbe(ProbedGate gate, LcovReport report, LcovVerdict verdict) {
   }
   return null;
 }
+
+/// The line and the count of an entry `DA:<line>,<hits>` or
+/// `BRDA:<line>,<block>,<branch>,<taken>`, read as the judgement reads them
+/// (a `-` is 0), or `null` for any other line and for an entry that cannot
+/// be read.
+({int line, num hits})? _entry(String line) {
+  final branch = line.startsWith('BRDA:');
+  if (!branch && !line.startsWith('DA:')) {
+    return null;
+  }
+  final fields = line.substring(branch ? 5 : 3).split(',');
+  final count = branch ? 3 : 1;
+  if (fields.length <= count) {
+    return null;
+  }
+  final number = int.tryParse(fields[0]);
+  final hits = fields[count].trim() == '-' ? 0 : num.tryParse(fields[count]);
+  return number == null || hits == null ? null : (line: number, hits: hits);
+}
+
+final _total = RegExp(r'^(LF|FNF):(\d+)$');
+
+/// One record of a tracefile ([lines], from its `SF:` line on) without what
+/// the probe at [probeLine], a function called [probeName], added to it.
+///
+/// Nothing is taken out when one of the entries at that line says
+/// "executed": the probe then is not what it is meant to be, and its
+/// entries stay together, for the judgement to fail on.
+List<String> _recordWithoutProbe(
+  List<String> lines,
+  int probeLine,
+  String probeName,
+) {
+  final atProbe = lines
+      .map((line) => _entry(line.trim()))
+      .whereType<({int line, num hits})>()
+      .where((entry) => entry.line == probeLine);
+  if (atProbe.any((entry) => entry.hits > 0)) {
+    return lines;
+  }
+  var removedLines = 0;
+  var removedFunctions = 0;
+  final kept = <String>[];
+  for (final raw in lines) {
+    final line = raw.trim();
+    if (_entry(line)?.line == probeLine) {
+      if (line.startsWith('DA:')) {
+        removedLines++;
+      }
+      continue;
+    }
+    // With function coverage: `FN:<line>,<name>` and `FNDA:<hits>,<name>`.
+    if ((line.startsWith('FN:') || line.startsWith('FNDA:')) &&
+        line.endsWith(',$probeName')) {
+      if (line.startsWith('FN:')) {
+        removedFunctions++;
+      }
+      continue;
+    }
+    kept.add(raw);
+  }
+  return [
+    for (final raw in kept)
+      if (_total.firstMatch(raw.trim()) case final total?)
+        raw.replaceFirst(
+          total[2]!,
+          '${int.parse(total[2]!) - (total[1] == 'LF' ? removedLines : removedFunctions)}',
+        )
+      else
+        raw,
+  ];
+}
+
+/// The tracefile of a run with probes in the gates, as the same run would
+/// have written it without them: for each gate of [probes], the entries of
+/// the probe are taken out of the record of the gate. Those are its line
+/// entry and its branch entry (`DA:` / `BRDA:` at the line of the probe),
+/// with function coverage also its `FN:` / `FNDA:` entries, and the totals
+/// `LF:` and `FNF:` are that much less.
+///
+/// That is all a probe adds to a tracefile: it is a function at the end of
+/// the file that nothing calls, so it moves no other line and no other
+/// count. The entries are read as the judgement reads them. They are only
+/// taken out when all of them say "not executed"; a probe that is reported
+/// as executed stays, and fails the gate.
+///
+/// [rootDirs] are the directories a record may have in front of its path,
+/// as for the judgement. Line ends are kept as they are, and so is
+/// everything that is outside a record of a gate.
+String tracefileWithoutProbes(
+  String text,
+  List<ProbedGate> probes, {
+  List<String> rootDirs = const [],
+}) {
+  final byPath = {
+    for (final probe in probes) normalizeLcovPath(probe.path): probe,
+  };
+  final kept = <String>[];
+  // The lines of the record that is being read, when it is one of a gate.
+  var record = <String>[];
+  ProbedGate? gate;
+  void close() {
+    final probe = gate;
+    kept.addAll(
+      probe == null
+          ? record
+          : _recordWithoutProbe(
+              record,
+              probe.line,
+              probeFunctionName(probe.path),
+            ),
+    );
+    record = [];
+    gate = null;
+  }
+
+  for (final raw in text.split('\n')) {
+    final line = raw.trim();
+    if (line.startsWith('SF:')) {
+      close();
+      gate = byPath[normalizeLcovPath(line.substring(3), rootDirs)];
+    }
+    record.add(raw);
+    if (line == 'end_of_record') {
+      close();
+    }
+  }
+  close();
+  return kept.join('\n');
+}

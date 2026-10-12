@@ -97,6 +97,56 @@ void main() {
     expect([for (final source in sources) bytes(source)], before);
   });
 
+  /// The records of the tracefile, sorted: the order of the records is not
+  /// the same from run to run.
+  List<String> records() =>
+      (File('${dir.path}/coverage/lcov.info')
+          .readAsStringSync()
+          .split('end_of_record')
+          .map((record) => record.trim())
+          .where((record) => record.isNotEmpty)
+          .toList()
+        ..sort());
+
+  for (final (name, gates, code) in [
+    ('every gate at 100%', ['lib/price.dart', 'lib/price.g.dart'], 0),
+    ('a gate that no test loads', ['lib/price.dart', 'lib/unloaded.dart'], 1),
+  ]) {
+    test('test --selfcheck leaves the tracefile of test and says the same '
+        'about the coverage: $name', () async {
+      manifest(gates);
+      final before = [for (final source in sources) bytes(source)];
+      expect(
+        await runAsync([
+          'test',
+          '--dir',
+          dir.path,
+        ], Io(out: out.add, err: err.add)),
+        code,
+      );
+      final plainRecords = records();
+      final plainOut = [...out];
+      final plainErr = [...err];
+      out.clear();
+      err.clear();
+
+      expect(
+        await runAsync([
+          'test',
+          '--selfcheck',
+          '--dir',
+          dir.path,
+        ], Io(out: out.add, err: err.add)),
+        code,
+      );
+      expect(records(), plainRecords);
+      // What is said about the coverage comes last, and is what test says.
+      expect(out.sublist(out.length - plainOut.length), plainOut);
+      expect(err.sublist(err.length - plainErr.length), plainErr);
+      expect([for (final source in sources) bytes(source)], before);
+    });
+  }
+
   test('test: the same command, without probes, passes the gates', () async {
     manifest(['lib/price.dart', 'lib/price.g.dart']);
     final code = await runAsync([
