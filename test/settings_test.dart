@@ -693,8 +693,8 @@ void main() {
             'file system / network / process access',
         'package:platform/platform.dart':
             'file system / network / process access',
-        'package:socket_io_client/socket_io_client.dart': 'HTTP client',
-        'package:mqtt_client/mqtt_client.dart': 'HTTP client',
+        'package:socket_io_client/socket_io_client.dart': 'network client',
+        'package:mqtt_client/mqtt_client.dart': 'network client',
         'package:get_storage/get_storage.dart': 'persistence',
         'package:realm/realm.dart': 'persistence',
         'package:floor/floor.dart': 'persistence',
@@ -710,6 +710,14 @@ void main() {
         'package:googleapis/googleapis.dart': 'external service SDK',
         'package:google_sign_in/google_sign_in.dart': 'external service SDK',
         'package:in_app_purchase/in_app_purchase.dart': 'external service SDK',
+        'package:realm_dart/realm.dart':
+            'the Dart-only package of one that is on this list',
+        'package:dart_appwrite/dart_appwrite.dart':
+            'the Dart-only package of one that is on this list',
+        'package:googleapis_auth/googleapis_auth.dart':
+            'the Dart-only package of one that is on this list',
+        'package:signals_core/signals_core.dart':
+            'the Dart-only package of one that is on this list',
       };
       expect({for (final uri in added.keys) uri: reasonFor(uri)}, added);
     });
@@ -725,18 +733,15 @@ void main() {
         'equatable',
         'freezed_annotation',
         'path',
-        'clock',
-        'logging',
         'characters',
         'fixnum',
         'quiver',
         'tuple',
-        'file_utils',
         'processing',
         'platforms',
-        'signals_core',
-        'realm_common',
+        'filesize',
         'http_parser',
+        'realm_common',
       ]) {
         expect(reasonFor('package:$name/$name.dart'), isNull, reason: name);
       }

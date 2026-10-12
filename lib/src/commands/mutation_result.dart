@@ -133,8 +133,7 @@ int judgeReportFile(
   if (listNotEvaluable && verdict.notEvaluable.isNotEmpty) {
     io.out(
       '$executable mutation: ${verdict.notEvaluable.length} mutant(s) '
-      'could not be evaluated (they are not programs, so no test was run '
-      'on them):',
+      'could not be evaluated (no test run says anything about them):',
     );
     for (final mutant in verdict.notEvaluable) {
       io.out('  ~ ${formatListedMutant(mutant)}');

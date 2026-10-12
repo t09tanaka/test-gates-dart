@@ -9,9 +9,11 @@ steps under "Upgrading from 0.1".
 
 ### Breaking
 
-- `mutation` needs `dart_mutant` 0.1.x (`dart pub global activate
+- The lowest `dart_mutant` that is supported is 0.1.1: an experimental
+  option of 0.1.0 could report a mutant as killed that survives.
+- `mutation` needs `dart_mutant` 0.1.1 or a later 0.1.x (`dart pub global activate
   dart_mutant`; Dart 3.11 or later). It is looked for on `PATH`, then as
-  `dart pub global run dart_mutant`. When it is missing, or is not a 0.1.x,
+  `dart pub global run dart_mutant`. When it is missing, or is not one of those,
   the exit code is 2 and nothing is run. The other commands run on Dart 3.9
   as before.
 - What follows `--` on the command line of `mutation` is handed to
@@ -58,7 +60,17 @@ steps under "Upgrading from 0.1".
   `floor` (persistence); `hydrated_bloc`, `replay_bloc`, `state_notifier`,
   `signals`, `async_redux`, `watch_it`, `stacked` (state management);
   `supabase`, `appwrite`, `googleapis`, `google_sign_in`, `in_app_purchase`
-  (services). `settings.impureImports.allow` exempts one.
+  (services), and `realm_dart`, `dart_appwrite`, `googleapis_auth`,
+  `signals_core` (the Dart-only packages of four of those).
+  `package:file` and `package:platform` are also what a pure function takes
+  a file system or a platform as; `settings.impureImports.allow` exempts
+  them, as it exempts any other.
+- `check` reports an import whose URI is not written plainly (an
+  upper-case scheme, a `%`, `file:`): Dart reads `DART:io` as `dart:io`, and
+  the rules compare the text. An import that leaves the package (`../..`
+  above its root) is reported as a file that cannot be read, and a
+  `pubspec.yaml` whose `name` is not found is a violation, because
+  `package:<name>/` could then not be followed.
 - A key that an entry of `equivalentMutants` / `expectedTimeouts` does not
   have is a violation (exit code 1), and the entry is not used. A misspelt
   `occurrence` was read as an entry without one.

@@ -9,9 +9,9 @@ import '../spec_path.dart';
 import '../types.dart';
 import 'output.dart';
 
-String? _packageName(String dir) {
+String? _pubspec(String dir) {
   try {
-    return packageNameOf(readText('$dir${Platform.pathSeparator}pubspec.yaml'));
+    return readText('$dir${Platform.pathSeparator}pubspec.yaml');
   } on FileSystemException {
     return null;
   }
@@ -26,8 +26,21 @@ String _read(String dir, String relativePath) => readText(
 List<Violation> checkGates(LoadedManifest manifest) {
   final dir = manifest.dir;
   final settings = manifest.settings;
-  final packageName = _packageName(dir);
-  final violations = [...manifest.violations];
+  final pubspec = _pubspec(dir);
+  final packageName = pubspec == null ? null : packageNameOf(pubspec);
+  final violations = [
+    ...manifest.violations,
+    // Without the name, `package:<name>/` is taken for another package and
+    // is not followed.
+    if (pubspec != null && packageName == null)
+      const Violation(
+        file: 'pubspec.yaml',
+        message:
+            'the name of the package is not found (looked for a line '
+            '"name: <name>"), so imports of its own files with '
+            '"package:<name>/" cannot be followed',
+      ),
+  ];
   // A file that several gates reach is read once.
   final sources = <String, String?>{};
   String? readSource(String path) => sources.putIfAbsent(path, () {

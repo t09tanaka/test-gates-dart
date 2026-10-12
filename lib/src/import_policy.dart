@@ -38,7 +38,8 @@ bool isProjectImport(String uri, List<ImportAlias> aliases) =>
 
 /// The path inside the package a URI points at, or `null` for another
 /// package or the SDK. `../money.dart` imported from `lib/a/b.dart` is
-/// `lib/money.dart`.
+/// `lib/money.dart`. A URI that leaves the package keeps its `..`
+/// (`../outside.dart`): it names no file of the package.
 String? resolveUri(String uri, String fromFile, List<ImportAlias> aliases) {
   String? joined;
   for (final alias in aliases) {
@@ -57,7 +58,11 @@ String? resolveUri(String uri, String fromFile, List<ImportAlias> aliases) {
   final segments = <String>[];
   for (final segment in joined.split('/')) {
     if (segment == '..') {
-      if (segments.isNotEmpty) {
+      // Above the package there is nothing of the package: the `..` stays,
+      // and the path is then one that no file of the package has.
+      if (segments.isEmpty || segments.last == '..') {
+        segments.add(segment);
+      } else {
         segments.removeLast();
       }
     } else if (segment != '.' && segment.isNotEmpty) {

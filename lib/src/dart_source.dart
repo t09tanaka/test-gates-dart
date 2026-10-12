@@ -59,7 +59,9 @@ class DartSource {
   /// Line of `part of`, when the file is a part of another library.
   final int? partOfLine;
 
-  /// Lines of a directive whose URI is not a plain string.
+  /// Lines of a directive whose URI cannot be judged by its text: it is
+  /// not a plain string, or it is written in a way that Dart reads as
+  /// another URI than the one that is written (see [_isPlainUri]).
   final List<int> uncheckableUris;
 
   /// Syntax errors: the file could not be read as Dart.
@@ -116,7 +118,7 @@ DartSource parseDartSource(String source) {
   int? partOfLine;
   void add(DirectiveKind kind, StringLiteral uri, [List<String>? shown]) {
     final value = uri.stringValue;
-    if (value == null) {
+    if (value == null || !_isPlainUri(value)) {
       uncheckable.add(lineOf(uri.offset));
     } else {
       imports.add(
@@ -326,4 +328,18 @@ class _Visitor extends RecursiveAstVisitor<void> {
     _block(node.finallyBlock);
     super.visitTryStatement(node);
   }
+}
+
+final _scheme = RegExp(r'^[A-Za-z][A-Za-z0-9+.-]*:');
+
+/// True for a URI that is what it looks like. The rules for imports compare
+/// the text of the URI, and Dart does not: it reads `DART:io` as `dart:io`
+/// and `package:%68ttp/http.dart` as `package:http/http.dart`, and with
+/// `file:` any file of the machine can be named. Such a URI is not judged;
+/// it is reported.
+bool _isPlainUri(String uri) {
+  final scheme = _scheme.stringMatch(uri);
+  final plainScheme =
+      scheme == null || (scheme == scheme.toLowerCase() && scheme != 'file:');
+  return plainScheme && !uri.contains('%');
 }

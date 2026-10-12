@@ -431,7 +431,7 @@ void main() {
       expect(runs(), isEmpty);
     });
 
-    for (final version in ['0.2.0', '1.1.0', '0.0.9']) {
+    for (final version in ['0.2.0', '1.1.0', '0.0.9', '0.1.0']) {
       test('version $version is not supported: exit code 2, nothing is '
           'run', () async {
         tool({'version': version, 'report': everythingKilled});
@@ -440,8 +440,8 @@ void main() {
         expect(package.err, [
           'test_gates mutation: dart_mutant $version '
               '("${fake.join(' ')}") is not a version this test_gates works '
-              'with (0.1.0 or later, below 0.2.0). Install one that is:',
-          "  dart pub global activate dart_mutant '^0.1.0'",
+              'with (0.1.1 or later, below 0.2.0). Install one that is:',
+          "  dart pub global activate dart_mutant '^0.1.1'",
         ]);
         expect(runs(), isEmpty);
         // Nothing was changed.
@@ -787,8 +787,8 @@ void main() {
         0,
       );
       const listed = [
-        'test_gates mutation: 2 mutant(s) could not be evaluated (they are '
-            'not programs, so no test was run on them):',
+        'test_gates mutation: 2 mutant(s) could not be evaluated (no test '
+            'run says anything about them):',
         '  ~ lib/a.dart:1:19 / ArithmeticOperator / + → - (CompileError)',
         "      The operator '-' isn't defined for the type.",
         '  ~ lib/b.dart:1:23 / ArithmeticOperator / - → + (RuntimeError)',

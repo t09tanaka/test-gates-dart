@@ -108,10 +108,12 @@ void main() {
   });
 
   group('the supported versions', () {
-    test('are 0.1.0 and every later 0.1.x, said in one place', () {
-      expect(supportedDartMutant, (major: 0, minor: 1, patch: 0));
-      expect(dartMutantConstraint(), '^0.1.0');
-      expect(dartMutantRange(), '0.1.0 or later, below 0.2.0');
+    test('are 0.1.1 and every later 0.1.x, said in one place', () {
+      expect(supportedDartMutant, (major: 0, minor: 1, patch: 1));
+      expect(dartMutantConstraint(), '^0.1.1');
+      expect(dartMutantRange(), '0.1.1 or later, below 0.2.0');
+      expect(isSupportedDartMutant('0.1.0'), isFalse);
+      expect(isSupportedDartMutant('0.1.1'), isTrue);
     });
 
     test('a higher lowest version: one constant decides the check and both '
@@ -132,7 +134,7 @@ void main() {
     });
 
     test('every patch of it, with or without a suffix', () {
-      for (final version in ['0.1.0', '0.1.1', '0.1.27', '0.1.3-dev.1']) {
+      for (final version in ['0.1.1', '0.1.2', '0.1.27', '0.1.3-dev.1']) {
         expect(isSupportedDartMutant(version), isTrue, reason: version);
       }
     });

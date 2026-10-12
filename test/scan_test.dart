@@ -180,7 +180,7 @@ void main() {
         [
           for (final finding in [
             '1: use of Random from "dart:math" (not repeatable)',
-            '2: a URI that is not a plain string cannot be checked',
+            '2: a URI that is not written plainly cannot be checked (a plain string, a lower-case scheme, no "%", not file:)',
             '3: reads String.fromEnvironment (not a pure module). Take the '
                 'value as an argument',
             '5: reads the clock',
@@ -931,7 +931,9 @@ const text = '// $ignore-line';
   test('a URI that is not a plain string', () {
     expect(
       scan("import 'a\${x}.dart';\n"),
-      contains('1: a URI that is not a plain string cannot be checked'),
+      contains(
+        '1: a URI that is not written plainly cannot be checked (a plain string, a lower-case scheme, no "%", not file:)',
+      ),
     );
   });
 

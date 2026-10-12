@@ -36,7 +36,7 @@ jobs:
       - name: Install dart_mutant
         if: matrix.sdk == 'stable'
         run: |
-          dart pub global activate dart_mutant '^0.1.0'
+          dart pub global activate dart_mutant '^0.1.1'
           echo "TEST_GATES_REQUIRE_DART_MUTANT=1" >> "$GITHUB_ENV"
       - run: dart test
       # The gates of this package (test-gates.json). Which lines carry a
@@ -85,7 +85,7 @@ jobs:
         with:
           sdk: stable
       - run: dart pub get
-      - run: dart pub global activate dart_mutant '^0.1.0'
+      - run: dart pub global activate dart_mutant '^0.1.1'
       - run: dart run test_gates mutation --force --gate "$GATE"
         env:
           GATE: ${{ matrix.gate }}

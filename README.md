@@ -168,7 +168,7 @@ An entry of `gates` or `candidates` may have keys of its own (`"owner"`), as ups
 | `spec.rewrite`          | not set     | `[{ "from", "to" }]` applied to the gate path first. Not set: the test may be next to the gate or under `test/`, see [`check`](#test_gates-check) |
 | `impureImports.defaults` | `true`     | Built-in list, see [What a gate must not import](#what-a-gate-must-not-import) |
 | `impureImports.add`     | none        | More URI patterns a gate must not import, export or have as a part           |
-| `impureImports.allow`   | none        | URI patterns exempt from every `impureImports` rule and from the part rule (`^package:flutter/foundation\\.dart$`) |
+| `impureImports.allow`   | none        | URI patterns exempt from every `impureImports` rule and from the part rule (`^package:flutter/foundation\\.dart$`). A file of the package that one matches is not followed either, see [What a gate reaches](#what-a-gate-reaches) |
 | `impureNamedImports`    | none        | `{ "add": [{ "module", "names", "reason" }] }`: names banned from a library that is otherwise fine (`Random` from `dart:math`) |
 | `impurePaths`           | `*.g.dart`, `*.freezed.dart` | `{ "defaults", "add" }`: gate paths that are rejected (`^lib/pages/`) |
 | `forbiddenSource`       | reads of the environment | `{ "defaults", "add" }`: `add` lists patterns tested against one line at a time; `defaults: false` turns the built-in rules off |
@@ -291,6 +291,8 @@ A gate that imports nothing impure itself can still do I/O through a file it imp
 - **What is followed:** `import` and `export` with a relative URI, `package:<name>/…` (`name` of `pubspec.yaml`) or a prefix of `settings.importAliases`, and in the files on the way also a `part` that no generator wrote. Every URI of a conditional import is followed. Each file is read once, so imports that form a circle end.
 - **What is not followed:** another package and the SDK (they are judged by their names, as in the tables above), a generated part (`*.g.dart`, `*.freezed.dart`), an import that is a finding already, and a URI that `settings.impureImports.allow` exempts. That last one is the way to say "this file is fine, and so is what is behind it": `"allow": ["^legacy/clock\\.dart$"]`.
 - **What is checked in a file on the way:** what it imports, exports and has as a part, its reads of the environment, the patterns of `settings.forbiddenSource.add`, the names of `settings.impureNamedImports`, and in allowlist mode what it may import. Coverage ignore comments and blocks that share a line are rules about how a gate is measured, and are checked in gates only.
+- **The package is the directory of `test-gates.json`.** `package:<name>/` is followed with the `name` of the `pubspec.yaml` next to it (a pubspec whose name is not found is a violation). A gate in a package below it (`packages/shop/lib/…`, imported as `package:shop/…`) is only followed with an entry in `settings.importAliases`. An import that leaves the package (`../../outside.dart`) is reported as a file that cannot be read.
+- **A URI has to be written plainly.** Dart reads `DART:io` as `dart:io` and `package:%68ttp/…` as `package:http/…`, and the rules compare the text. A URI with an upper-case scheme, with `%`, or with `file:` is reported as one that cannot be checked.
 - A file that cannot be read (it is not there, or its name is spelt in another case) is a violation: what it brings in cannot be checked. A file a generator writes has to be there when `check` runs, and the message says so: `… reaches lib/rates.g.dart, which cannot be read, so what it brings in cannot be checked. When a generator writes that file, run it before check (lib/fee.dart → lib/rates.g.dart)`.
 
 The finding is reported at the line of the gate's own directive, with the file and line it is in, and the files in between. The example with `import 'limits.dart';` added to a gate, where `lib/limits.dart` says `export 'freight.dart';` and `lib/freight.dart` reads an environment variable through `dart:io`:
@@ -504,7 +506,7 @@ dart pub global activate dart_mutant
 
 When neither does, the exit code is 2, and the message has the command above and what each of the two did: that it could not be started, or its exit code and the first line it printed.
 
-**This version works with `dart_mutant` 0.1.x.** The version is asked for before every run, and any other is refused with exit code 2 before anything is run or changed: another version may make other mutants of the same source, and then the allowances of `test-gates.json` no longer mean what they meant. Where the newest version must not be taken unseen (CI), give the range: `dart pub global activate dart_mutant '^0.1.0'`.
+**This version works with `dart_mutant` 0.1.1 and every later 0.1.x.** (Not 0.1.0: an experimental option of that version could report a mutant as killed that survives.) The version is asked for before every run, and any other is refused with exit code 2 before anything is run or changed: another version may make other mutants of the same source, and then the allowances of `test-gates.json` no longer mean what they meant. Where the newest version must not be taken unseen (CI), give the range: `dart pub global activate dart_mutant '^0.1.1'`.
 
 There is no setting that names the command. `test-gates.json` is the file upstream reads as well, and upstream refuses a key it does not know. To use another build of the tool, put an executable called `dart_mutant` first on `PATH`.
 
@@ -631,7 +633,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
       - run: dart pub get
-      - run: dart pub global activate dart_mutant '^0.1.0'
+      - run: dart pub global activate dart_mutant '^0.1.1'
       - run: dart run test_gates mutation --force --gate "$GATE"
         env:
           GATE: ${{ matrix.gate }}
@@ -700,9 +702,9 @@ Measured with Dart 3.13.2 on a Mac with 12 logical processors, `--force`, one ru
 | Package                                    | Gates | Mutants                        | Full run (`--force`) | Test runs at a time |
 | ------------------------------------------ | ----- | ------------------------------ | -------------------- | ------------------- |
 | [`example/`](example)                      | 2     | 69, of which 2 do not compile  | 1 min 1 s            | 1, in place (it has a `path:` dependency) |
-| This package, its own gates                | 14    | 2527, of which 253 do not compile | about 19 min      | 3, in working copies (the default there) |
+| This package, its own gates                | 14    | 2552, of which 256 do not compile | about 23 min      | 3, in working copies (the default there) |
 
-Of the 2527 mutants of this package 2266 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
+Of the 2552 mutants of this package 2288 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
 
 A mutant that compiles costs one start of the test runner on the test of its gate. A second run without `--force` and without a change runs nothing but the timeouts.
 
@@ -747,10 +749,10 @@ outside (same return value, exception and side effects for every input), add it 
 test_gates mutation: FAILED (mutants 69 / detected 65 (timeout 0) / allowed equivalent 0 / not evaluable 2 / unallowed survivors 2)
 ```
 
-`--not-evaluable` (for `mutation` and for `mutation-result`) lists the mutants that could not be evaluated, with what the tool says about each. Without it they are only counted. The verdict is the same either way:
+`--not-evaluable` (for `mutation` and for `mutation-result`) lists the mutants that could not be evaluated, with what the tool says about each. Without it they are only counted. The verdict is the same either way. (A part of a run, `-- --shard`, is not judged, so nothing is listed for it.)
 
 ```
-test_gates mutation: 2 mutant(s) could not be evaluated (they are not programs, so no test was run on them):
+test_gates mutation: 2 mutant(s) could not be evaluated (no test run says anything about them):
   ~ lib/bulk_discount.dart:12:27 / ArithmeticOperator / * → / / occurrence 1 of 2 (CompileError)
       A value of type 'double' can't be returned from the function 'lineTotalCents' because it has a return type of 'int'.
   ~ lib/shipping_fee.dart:13:19 / ArithmeticOperator / * → / (CompileError)
@@ -843,6 +845,7 @@ Other limits:
 - **Only Flutter 3.47.2 / Dart 3.13.2 were measured.** Which lines carry a block is decided by the Dart VM and may change between SDK versions. A gate that passes on one SDK and fails on another points at such a change.
 - **The clock and random numbers are not checked** (`DateTime.now()`, `Random()`), by `lcov` or by `check`: a default argument such as `now ?? DateTime.now()` is a legitimate way to pass them in, and the syntax cannot tell it from a direct read. Add a `forbiddenSource` rule, or `impureNamedImports` for `Random`, if the project wants one.
 - **`check` reads the syntax, not the meaning.** Nothing is resolved, so the environment is found by name: `Platform.environment` and `String.fromEnvironment` are reported, a class of the project called `Platform` with an `environment` member is reported too, and a read through another name (`final env = Platform.environment` in another file) is not. A record field named `skip` in a test is taken for the argument.
+- **A part named `*.g.dart` or `*.freezed.dart` is not read**, in a gate and in the files it reaches: it is taken for the output of a generator. A file with such a name that somebody wrote by hand is not checked.
 - **`check` follows imports into the package, not into other packages.** What `package:decimal` imports is not read; a package is judged by its name. `impureImports` patterns see the URI as written (see [What a gate must not import](#what-a-gate-must-not-import)).
 - **A pattern of `forbiddenSource.add` is tested against the code of a line.** A comment is not code (upstream tests the text of the line, comments included); a string literal is. Coverage ignore comments are found in the text of the line as well, because that is how the coverage tool finds them: one inside a string literal is honoured by the tool, and reported here.
 - **`check` parses with the newest language version its `analyzer` knows.** The range is wide (`>=8.2.0 <15.0.0`) so that it resolves next to the code generators of an app; an app that pins an old `analyzer` and uses newer syntax in a gate gets a syntax error from `check`.
@@ -856,7 +859,7 @@ Until 0.1.1 `test_gates mutation` made the mutants and ran the tests itself. Fro
 1. Install the tool, on every machine that runs `mutation` and in CI: `dart pub global activate dart_mutant` (Dart 3.11 or later). Without it `mutation` ends with exit code 2.
 2. A test command that was given behind `--` now goes behind a second one: `test_gates mutation -- fvm flutter test --no-pub` becomes `test_gates mutation -- -- fvm flutter test --no-pub`. What follows the first `--` are options of `dart_mutant run` (`--jobs`, `--shard`, `--html`). The old form is refused with exit code 2.
 3. Run `test_gates mutation --force` once. The mutators of 0.1 make the same mutants as before, so every `equivalentMutants` and `expectedTimeouts` entry still matches. **New survivors are to be expected**: `dart_mutant` also changes members and numbers by their types (`MethodExpression`, `NumberLiteral`, the guard mutators, see [Mutators](#mutators)), which 0.1 did not. Each is a decision no test checked. Fix the test; allow only what no input can observe.
-4. Run `test_gates check`. It is stricter than in 0.1: the imports of a gate are followed into the files of the package ([What a gate reaches](#what-a-gate-reaches)), more packages are impure by default ([What a gate must not import](#what-a-gate-must-not-import)), and a misspelt key in an `equivalentMutants` entry is a violation. For a file that is fine although the check says otherwise, there is `settings.impureImports.allow`.
+4. Run `test_gates check`. It is stricter than in 0.1: the imports of a gate are followed into the files of the package ([What a gate reaches](#what-a-gate-reaches)), more packages are impure by default ([What a gate must not import](#what-a-gate-must-not-import)), and a misspelt key in an `equivalentMutants` entry is a violation. For a file that is fine although the check says otherwise, there is `settings.impureImports.allow`. Look at the patterns that are there already: one without `^` and `$` is tried on every import of every file on the way, and stops the following wherever it matches.
 5. Delete `.dart_tool/test_gates/mutation/`. The results and backups that 0.1 kept there are no longer read. (When a run of 0.1 was killed, `git diff` shows the mutant it left in a gate: put the gate back first.)
 
 What else changed: the lines per gate are printed by `dart_mutant`; on a machine with 8 processors or more the gates are no longer changed in place; `mutation-result` refuses the report of a part of a run; exit code 2 also means that the tool is missing.

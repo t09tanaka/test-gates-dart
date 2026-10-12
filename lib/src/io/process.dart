@@ -187,6 +187,11 @@ Future<bool> _handOver(
       return false;
     }
   }
+  // Once more: what ended in the last moment was not killed.
+  descendants = _stillThere(descendants);
+  if (exited && descendants.isEmpty) {
+    return false;
+  }
   if (!exited) {
     process.kill(ProcessSignal.sigkill);
   }

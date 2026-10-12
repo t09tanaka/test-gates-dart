@@ -43,8 +43,13 @@ const defaultImpureImports = [
   ),
   (r'^package:(web|js)/', 'browser API'),
   (
-    r'^package:(http|dio|retrofit|chopper|graphql|grpc|web_socket_channel|socket_io_client|mqtt_client)/',
+    r'^package:(http|dio|retrofit|chopper|graphql|grpc|web_socket_channel)/',
     'HTTP client',
+  ),
+  (r'^package:(socket_io_client|mqtt_client)/', 'network client'),
+  (
+    r'^package:(realm_dart|dart_appwrite|googleapis_auth|signals_core)/',
+    'the Dart-only package of one that is on this list',
   ),
   (
     r'^package:(shared_preferences|sqflite|hive|hive_ce|isar|drift|sembast|objectbox|path_provider|get_storage|realm|floor)/',

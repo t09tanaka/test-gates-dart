@@ -277,6 +277,49 @@ void f() => print(home);
       ]);
     });
 
+    test('a pubspec whose name is not found: the imports of the package '
+        'itself could not be followed, and that is said', () {
+      manifest(
+        ['lib/a.dart'],
+        settings: {
+          'spec': {'suffixes': <String>[]},
+        },
+      );
+      write('lib/a.dart', 'const a = 1;\n');
+      write('pubspec.yaml', 'name:\n  app\n');
+      expect(check(), 1);
+      expect(err, [
+        'test_gates check: 1 violation(s)',
+        '  - pubspec.yaml: the name of the package is not found (looked for '
+            'a line "name: <name>"), so imports of its own files with '
+            '"package:<name>/" cannot be followed',
+      ]);
+      err.clear();
+      write('pubspec.yaml', '"name" : app\n');
+      expect(check(), 0);
+    });
+
+    test('an import that leaves the package is not read from inside '
+        'it', () {
+      manifest(
+        ['lib/a.dart'],
+        settings: {
+          'spec': {'suffixes': <String>[]},
+        },
+      );
+      write('lib/a.dart', "import '../../outside.dart';\n");
+      // What the path would be if the ".." were cut off at the package.
+      write('outside.dart', 'const a = 1;\n');
+      expect(check(), 1);
+      expect(
+        err[1],
+        startsWith(
+          '  - lib/a.dart:1: import of "../../outside.dart" reaches '
+          '../outside.dart, which cannot be read',
+        ),
+      );
+    });
+
     test('a file that is reached is found by its exact spelling', () {
       manifest(
         ['lib/a.dart'],

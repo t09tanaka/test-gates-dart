@@ -49,7 +49,14 @@ void main() {
       expect(resolveUri('./b.dart', 'lib/a/a.dart', own), 'lib/a/b.dart');
       expect(resolveUri('../b.dart', 'lib/a/a.dart', own), 'lib/b.dart');
       expect(resolveUri('x/../b.dart', 'a.dart', own), 'b.dart');
-      expect(resolveUri('../../../b.dart', 'lib/a.dart', own), 'b.dart');
+      // Above the package: the path keeps its "..", and is no file of it.
+      expect(resolveUri('../../b.dart', 'lib/a.dart', own), '../b.dart');
+      expect(resolveUri('../../../b.dart', 'lib/a.dart', own), '../../b.dart');
+      expect(resolveUri('../b.dart', 'a.dart', own), '../b.dart');
+      expect(resolveUri('../x/../../b.dart', 'lib/a.dart', own), '../b.dart');
+      expect(resolveUri('../x/../b.dart', 'lib/a.dart', own), 'b.dart');
+      expect(resolveUri('../x/../b.dart', 'a.dart', own), '../b.dart');
+      expect(resolveUri('../x/y/../b.dart', 'a.dart', own), '../x/b.dart');
     });
 
     test('through the package and through an alias', () {

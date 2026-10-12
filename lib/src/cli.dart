@@ -32,7 +32,7 @@ Options:
   --force                     mutation: run every mutant again, also of a gate unchanged since the last run
   --gate <path>               mutation, mutation-result: only this gate (may be given more than once)
   --not-evaluable             mutation, mutation-result: list the mutants that could not be evaluated
-                              (they do not compile), not only their number
+                              (they do not compile, say), not only their number
   -- <options>                mutation: handed to "dart_mutant run" as they are (--jobs <n>, --shard <i>/<n>,
                               --html <file>, and behind a second "--" the command that runs test files)
   -h, --help                  Show this help

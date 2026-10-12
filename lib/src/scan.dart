@@ -69,7 +69,12 @@ List<_Finding> _sourceFindings(
     for (final rule in settings.forbiddenSource)
       if (rule.regex.hasMatch(line)) (line: index + 1, message: rule.reason),
   for (final line in parsed.uncheckableUris)
-    (line: line, message: 'a URI that is not a plain string cannot be checked'),
+    (
+      line: line,
+      message:
+          'a URI that is not written plainly cannot be checked (a plain '
+          'string, a lower-case scheme, no "%", not file:)',
+    ),
 ];
 
 bool _exempt(ImportRef imported, ResolvedSettings settings) =>
