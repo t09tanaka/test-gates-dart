@@ -151,7 +151,9 @@ One file per package, next to `pubspec.yaml`:
 Problems are reported in two ways, as upstream does:
 
 - The file cannot be used at all: not JSON, `gates` missing, **an unknown top-level key, or an unknown key anywhere in `settings`**. Exit code 2. A typo in a setting must not silently fall back to a default.
-- An entry is wrong: a missing `decides`, a path listed twice, a path in both lists, a malformed `equivalentMutants` entry. Reported as a violation, exit code 1.
+- An entry is wrong: a missing `decides`, a path listed twice, a path in both lists, a malformed `equivalentMutants` entry, **or a key such an entry does not have** (`"occurence"`: without its `occurrence` the entry would point at another mutant). Reported as a violation, exit code 1.
+
+An entry of `gates` or `candidates` may have keys of its own (`"owner"`), as upstream's schema allows; they are not read.
 
 ### Settings
 
@@ -166,7 +168,7 @@ Problems are reported in two ways, as upstream does:
 | `spec.rewrite`          | not set     | `[{ "from", "to" }]` applied to the gate path first. Not set: the test may be next to the gate or under `test/`, see [`check`](#test_gates-check) |
 | `impureImports.defaults` | `true`     | Built-in list, see [What a gate must not import](#what-a-gate-must-not-import) |
 | `impureImports.add`     | none        | More URI patterns a gate must not import, export or have as a part           |
-| `impureImports.allow`   | none        | URI patterns exempt from every `impureImports` rule and from the part rule (`^package:flutter/foundation\\.dart$`) |
+| `impureImports.allow`   | none        | URI patterns exempt from every `impureImports` rule and from the part rule (`^package:flutter/foundation\\.dart$`). A file of the package that one matches is not followed either, see [What a gate reaches](#what-a-gate-reaches) |
 | `impureNamedImports`    | none        | `{ "add": [{ "module", "names", "reason" }] }`: names banned from a library that is otherwise fine (`Random` from `dart:math`) |
 | `impurePaths`           | `*.g.dart`, `*.freezed.dart` | `{ "defaults", "add" }`: gate paths that are rejected (`^lib/pages/`) |
 | `forbiddenSource`       | reads of the environment | `{ "defaults", "add" }`: `add` lists patterns tested against one line at a time; `defaults: false` turns the built-in rules off |
@@ -211,6 +213,7 @@ The test of a gate:
 A gate is a pure module:
 
 - It does not import, export or have as a part anything in [What a gate must not import](#what-a-gate-must-not-import). The URIs of a conditional import are all checked.
+- **Neither does a file it reaches.** The imports and exports of the gate that point into the package are followed, file by file, and every file on the way is held to the rules of this list that are about what a file brings in and reads: its imports, its reads of the environment, `settings.forbiddenSource`, `settings.impureNamedImports`, and allowlist mode. See [What a gate reaches](#what-a-gate-reaches).
 - `part 'x.g.dart'` and `part 'x.freezed.dart'` are allowed (the output of json_serializable, freezed and other generators; the same files that cannot be gates themselves). Any other part is rejected: it is code of the gate in a file that is neither checked nor measured under the gate's path. A gate that is itself `part of` another library is rejected too, because its imports are in that library.
 - It does not read the environment: `Platform.environment`, `String.fromEnvironment`, `bool.fromEnvironment`, `int.fromEnvironment`, `bool.hasEnvironment`. What comes from the environment is an input: take it as an argument.
 - It has no coverage ignore comment (`// coverage:ignore-line`, `ignore-start`, `ignore-end`, `ignore-file`).
@@ -243,14 +246,15 @@ Built in (`settings.impureImports.defaults`). The patterns are tested against th
 | What                         | URIs                                                                                              |
 | ---------------------------- | ------------------------------------------------------------------------------------------------- |
 | Flutter framework and engine | `package:flutter/*`, `dart:ui`, `dart:ui_web`                                                      |
-| Flutter plugins and UI packages | every `package:flutter_*` (`flutter_bloc`, `flutter_riverpod`, `flutter_secure_storage`, `flutter_stripe`, `flutter_svg`, `flutter_test`, …) and every `package:*_flutter` (`hive_flutter`, `sentry_flutter`, …) |
-| File system, network, process | `dart:io`, `dart:ffi`, `dart:isolate`, `dart:mirrors`                                             |
+| Flutter plugins and UI packages | every `package:flutter_*` (`flutter_bloc`, `flutter_riverpod`, `flutter_secure_storage`, `flutter_stripe`, `flutter_svg`, `flutter_test`, …) and every `package:*_flutter` (`hive_flutter`, `sentry_flutter`, …); `go_router`, `auto_route`, `cached_network_image`, `google_fonts` |
+| File system, network, process | `dart:io`, `dart:ffi`, `dart:isolate`, `dart:mirrors`; `package:file`, `process`, `platform` |
+| Device and platform          | `package:connectivity_plus`, `device_info_plus`, `package_info_plus`, `share_plus`, `battery_plus`, `sensors_plus`, `network_info_plus`, `url_launcher`, `permission_handler`, `geolocator`, `image_picker`, `file_picker`, `local_auth` |
 | Browser                      | `dart:html`, `dart:indexed_db`, `dart:svg`, `dart:web_audio`, `dart:web_gl`, `dart:js`, `dart:js_*` (`js_interop`, `js_util`, …), `package:web`, `package:js` |
-| HTTP clients                 | `package:http`, `dio`, `retrofit`, `chopper`, `graphql`, `grpc`, `web_socket_channel`              |
-| Persistence                  | `package:shared_preferences`, `sqflite`, `hive`, `hive_ce`, `isar`, `drift`, `sembast`, `objectbox`, `path_provider` |
+| HTTP clients                 | `package:http`, `dio`, `retrofit`, `chopper`, `graphql`, `grpc`, `web_socket_channel`, `socket_io_client`, `mqtt_client` |
+| Persistence                  | `package:shared_preferences`, `sqflite`, `hive`, `hive_ce`, `isar`, `drift`, `sembast`, `objectbox`, `path_provider`, `get_storage`, `realm`, `floor` |
 | Database clients             | `package:sqlite3`, `postgres`, `mysql1`, `mysql_client`, `mongo_dart`, `redis`                     |
-| State management             | `package:bloc`, `provider`, `riverpod`, `hooks_riverpod`, `riverpod_annotation`, `get`, `get_it`, `mobx`, `redux`, `rxdart` |
-| External service SDKs        | `package:firebase_*`, `cloud_firestore`, `cloud_functions`, `sentry`                               |
+| State management             | `package:bloc`, `provider`, `riverpod`, `hooks_riverpod`, `riverpod_annotation`, `get`, `get_it`, `mobx`, `redux`, `rxdart`, `hydrated_bloc`, `replay_bloc`, `state_notifier`, `signals`, `async_redux`, `watch_it`, `stacked` |
+| External service SDKs        | `package:firebase_*`, `cloud_firestore`, `cloud_functions`, `sentry`, `supabase`, `appwrite`, `googleapis`, `google_sign_in`, `in_app_purchase` |
 
 Not on the list, on purpose: `package:json_annotation`, `package:meta` and `package:collection` (annotations and pure data structures), and the rest of the SDK (`dart:core`, `dart:async`, `dart:collection`, `dart:convert`, `dart:math`, `dart:typed_data`, `dart:developer`).
 
@@ -280,6 +284,27 @@ A pattern of `add` sees the URI, not the file it resolves to: `^package:shop/sta
 
 Dart has no `import type`. An import that is only used for a type (`Dio` as a parameter type) is reported like any other; a file that names `Dio` is not a pure module in the sense of this check, and `allow` is there for the exception.
 
+### What a gate reaches
+
+A gate that imports nothing impure itself can still do I/O through a file it imports. So `check` follows the imports:
+
+- **What is followed:** `import` and `export` with a relative URI, `package:<name>/…` (`name` of `pubspec.yaml`) or a prefix of `settings.importAliases`, and in the files on the way also a `part` that no generator wrote. Every URI of a conditional import is followed. Each file is read once, so imports that form a circle end.
+- **What is not followed:** another package and the SDK (they are judged by their names, as in the tables above), a generated part (`*.g.dart`, `*.freezed.dart`), an import that is a finding already, and a URI that `settings.impureImports.allow` exempts. That last one is the way to say "this file is fine, and so is what is behind it": `"allow": ["^legacy/clock\\.dart$"]`.
+- **What is checked in a file on the way:** what it imports, exports and has as a part, its reads of the environment, the patterns of `settings.forbiddenSource.add`, the names of `settings.impureNamedImports`, and in allowlist mode what it may import. Coverage ignore comments and blocks that share a line are rules about how a gate is measured, and are checked in gates only.
+- **The package is the directory of `test-gates.json`.** `package:<name>/` is followed with the `name` of the `pubspec.yaml` next to it (a pubspec whose name is not found is a violation). A gate in a package below it (`packages/shop/lib/…`, imported as `package:shop/…`) is only followed with an entry in `settings.importAliases`. An import that leaves the package (`../../outside.dart`) is reported as a file that cannot be read.
+- **A URI has to be written plainly.** Dart reads `DART:io` as `dart:io` and `package:%68ttp/…` as `package:http/…`, and the rules compare the text. A URI with an upper-case scheme, with `%`, or with `file:` is reported as one that cannot be checked.
+- A file that cannot be read (it is not there, or its name is spelt in another case) is a violation: what it brings in cannot be checked. A file a generator writes has to be there when `check` runs, and the message says so: `… reaches lib/rates.g.dart, which cannot be read, so what it brings in cannot be checked. When a generator writes that file, run it before check (lib/fee.dart → lib/rates.g.dart)`.
+
+The finding is reported at the line of the gate's own directive, with the file and line it is in, and the files in between. The example with `import 'limits.dart';` added to a gate, where `lib/limits.dart` says `export 'freight.dart';` and `lib/freight.dart` reads an environment variable through `dart:io`:
+
+```
+test_gates check: 2 violation(s)
+  - lib/shipping_fee.dart:1: import of "limits.dart" reaches lib/freight.dart:1: import of "dart:io" (file system / network / process access) (lib/shipping_fee.dart → lib/limits.dart → lib/freight.dart)
+  - lib/shipping_fee.dart:1: import of "limits.dart" reaches lib/freight.dart:4: reads Platform.environment (not a pure module). Take the value as an argument (lib/shipping_fee.dart → lib/limits.dart → lib/freight.dart)
+```
+
+When several ways lead to a file, the shortest is the one that is shown, and a finding is reported once per gate.
+
 ### Allowlist mode
 
 The default import check is a blocklist: it knows the libraries listed above, and a new SDK passes until somebody adds it. `settings.imports.mode: "allowlist"` turns it around. A gate may then import only
@@ -305,7 +330,7 @@ The default import check is a blocklist: it knows the libraries listed above, an
 
 The blocklist stays in force underneath, and a file of the package is not safe just because it is in the package: in allowlist mode an import is also rejected when the file it points at matches `settings.impurePaths` (a generated file, or what the project added: a page, a widget).
 
-What it does not do: follow the imports. Only the gate's own directives are read. If `zones.dart` is imported and itself imports `dart:io`, that is not noticed unless `zones.dart` is a gate too.
+The files a gate reaches are held to the same list: a file of the package that the gate imports may itself import only what a gate may ([What a gate reaches](#what-a-gate-reaches)).
 
 ## `test_gates lcov [--file <lcov.info>]`
 
@@ -427,7 +452,7 @@ A control does not hold, and the exit code is 1, when:
 - A run that is killed outright (SIGKILL, power loss) cannot clean up. The next `selfcheck` removes what is left from the gates listed in `test-gates.json` before it does anything else, and until then the leftover makes the gate **fail** on the next coverage run, never pass: the probe is unexecuted code in a gate. It is also two lines at the end of the file that `git diff` shows.
 - When a gate is saved by somebody else during the run, the change is kept and only the probe at its end is removed; the run fails and says so.
 
-A copy of the package in a temporary directory would leave the working tree alone, and was tried on a Flutter app. It was not chosen: `flutter test` in the copy resolved the dependencies again (`pub get`, which needs the network or a complete cache), relative `path:` dependencies and pub workspaces point outside the copy, and what to leave out of the copy is different in every project (`build/` and `.dart_tool/` of that app alone were more than 2 GB). A control that fails for such a reason says nothing about the gates.
+A copy of the package in a temporary directory would leave the working tree alone. It was not chosen, because a copy is not the package: a relative `path:` dependency (the one [`example/`](example) has on this package, `path: ..`) and a pub workspace point outside the copy, and the coverage command of the project would have to be run somewhere it was not written for. A control that fails for such a reason says nothing about the gates.
 
 The end of the file is a valid place in every Dart file: after all directives, so a library with `part 'shipping_fee.g.dart';` is fine, and inside a `part of` file. The function is named after the path of the gate, so two gates that are parts of one library do not collide.
 
@@ -479,9 +504,9 @@ dart pub global activate dart_mutant
 1. `dart_mutant` on `PATH`. That is where `dart pub global activate` puts it when `~/.pub-cache/bin` is on `PATH`.
 2. `dart pub global run dart_mutant`, with the `dart` that runs `test_gates`.
 
-When neither does, the exit code is 2, and the message has the command above.
+When neither does, the exit code is 2, and the message has the command above and what each of the two did: that it could not be started, or its exit code and the first line it printed.
 
-**This version works with `dart_mutant` 0.1.x.** The version is asked for before every run, and any other is refused with exit code 2 before anything is run or changed: another version may make other mutants of the same source, and then the allowances of `test-gates.json` no longer mean what they meant. Where the newest version must not be taken unseen (CI), give the range: `dart pub global activate dart_mutant '^0.1.0'`.
+**This version works with `dart_mutant` 0.1.1 and every later 0.1.x.** (Not 0.1.0: an experimental option of that version could report a mutant as killed that survives.) The version is asked for before every run, and any other is refused with exit code 2 before anything is run or changed: another version may make other mutants of the same source, and then the allowances of `test-gates.json` no longer mean what they meant. Where the newest version must not be taken unseen (CI), give the range: `dart pub global activate dart_mutant '^0.1.1'`.
 
 There is no setting that names the command. `test-gates.json` is the file upstream reads as well, and upstream refuses a key it does not know. To use another build of the tool, put an executable called `dart_mutant` first on `PATH`.
 
@@ -608,7 +633,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
       - run: dart pub get
-      - run: dart pub global activate dart_mutant '^0.1.0'
+      - run: dart pub global activate dart_mutant '^0.1.1'
       - run: dart run test_gates mutation --force --gate "$GATE"
         env:
           GATE: ${{ matrix.gate }}
@@ -666,7 +691,7 @@ test_gates mutation: a part of a run (--shard) was written to part-1.json. It is
 - With one job, and for a package that cannot be run from a copy (a `path:` dependency outside the package, a pub workspace), the gates are changed **in place**, one mutant at a time, and put back after every test run. Do not edit a gate, commit, or switch branches while that runs. For a package that cannot be run from a copy the tool says so in its first line.
 - One run at a time in a package. A second one is turned away by the tool (exit code 1, nothing changed), and `mutation` then fails: the gates have no result.
 
-On **Ctrl-C (SIGINT), SIGTERM and SIGHUP** `mutation` hands the signal to the tool and to every process that descends from it (the executable on `PATH` is a script that starts the tool, and would not pass it on), and waits until they have ended: the tool ends its test runs, removes its copies or puts the gate back, and writes no report. `mutation` then exits with 130 / 143 / 129 and judges nothing. What is still there after 60 seconds is killed. Where there is no `ps`, only the process that was started gets the signal. On Windows no signal can be handed on: the process that was started is ended, and the tool behind it is not waited for.
+On **Ctrl-C (SIGINT), SIGTERM and SIGHUP** `mutation` hands the signal to the tool and to every process that descends from it (the executable on `PATH` is a script that starts the tool, and would not pass it on), and waits until they have ended: the tool ends its test runs, removes its copies or puts the gate back, and writes no report. `mutation` then exits with 130 / 143 / 129 and judges nothing. What is still there after 60 seconds is killed, and the message says so: the tool may then not have put back what it changed, and `git status` shows a gate with a mutant in it. Where there is no `ps`, only the process that was started gets the signal. On Windows no signal can be handed on: the process that was started is ended, and the tool behind it is not waited for.
 
 A run that is killed outright (SIGKILL, power loss) with one job leaves one mutant in one gate. The next run of the tool puts the gate back before it does anything else. Until then `git diff` shows the mutant.
 
@@ -677,9 +702,9 @@ Measured with Dart 3.13.2 on a Mac with 12 logical processors, `--force`, one ru
 | Package                                    | Gates | Mutants                        | Full run (`--force`) | Test runs at a time |
 | ------------------------------------------ | ----- | ------------------------------ | -------------------- | ------------------- |
 | [`example/`](example)                      | 2     | 69, of which 2 do not compile  | 1 min 1 s            | 1, in place (it has a `path:` dependency) |
-| This package, its own gates                | 14    | 2414, of which 245 do not compile | about 15 min      | 3, in working copies (the default there) |
+| This package, its own gates                | 14    | 2552, of which 256 do not compile | about 23 min      | 3, in working copies (the default there) |
 
-Of the 2414 mutants of this package 2161 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
+Of the 2552 mutants of this package 2288 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
 
 A mutant that compiles costs one start of the test runner on the test of its gate. A second run without `--force` and without a change runs nothing but the timeouts.
 
@@ -722,6 +747,17 @@ outside (same return value, exception and side effects for every input), add it 
     {"mutator":"EqualityOperator","original":">","replacement":">=","reason":""}
 
 test_gates mutation: FAILED (mutants 69 / detected 65 (timeout 0) / allowed equivalent 0 / not evaluable 2 / unallowed survivors 2)
+```
+
+`--not-evaluable` (for `mutation` and for `mutation-result`) lists the mutants that could not be evaluated, with what the tool says about each. Without it they are only counted. The verdict is the same either way. (A part of a run, `-- --shard`, is not judged, so nothing is listed for it.)
+
+```
+test_gates mutation: 2 mutant(s) could not be evaluated (no test run says anything about them):
+  ~ lib/bulk_discount.dart:12:27 / ArithmeticOperator / * → / / occurrence 1 of 2 (CompileError)
+      A value of type 'double' can't be returned from the function 'lineTotalCents' because it has a return type of 'int'.
+  ~ lib/shipping_fee.dart:13:19 / ArithmeticOperator / * → / (CompileError)
+      A value of type 'int' can't be assigned to a variable of type 'double'.
+test_gates mutation: OK (mutants 69 / detected 65 (timeout 0) / allowed equivalent 2 / not evaluable 2 / unallowed survivors 0)
 ```
 
 The fragment is the key of the mutant, whatever its mutator: when the same change can be made in several places of the file (`0` → `1`), it has the `occurrence` that picks this one.
@@ -805,12 +841,13 @@ Limits of `mutation`:
 
 Other limits:
 
-- **`dart test --coverage=<dir>` followed by `format_coverage --lcov`** gives the same records as `--coverage-path` (compared byte for byte once, on the same source as the fixtures; that output is not kept as a fixture). Both need `--branch-coverage` on the `dart test` side; `format_coverage` has no such option of its own.
+- **`dart test --coverage=<dir>` followed by `format_coverage --lcov`** is another way to an lcov tracefile. The fixtures and tests of this package are made with `--coverage-path` only, so that way is not covered by them. Both need `--branch-coverage` on the `dart test` side; `format_coverage` has no such option of its own.
 - **Only Flutter 3.47.2 / Dart 3.13.2 were measured.** Which lines carry a block is decided by the Dart VM and may change between SDK versions. A gate that passes on one SDK and fails on another points at such a change.
 - **The clock and random numbers are not checked** (`DateTime.now()`, `Random()`), by `lcov` or by `check`: a default argument such as `now ?? DateTime.now()` is a legitimate way to pass them in, and the syntax cannot tell it from a direct read. Add a `forbiddenSource` rule, or `impureNamedImports` for `Random`, if the project wants one.
 - **`check` reads the syntax, not the meaning.** Nothing is resolved, so the environment is found by name: `Platform.environment` and `String.fromEnvironment` are reported, a class of the project called `Platform` with an `environment` member is reported too, and a read through another name (`final env = Platform.environment` in another file) is not. A record field named `skip` in a test is taken for the argument.
-- **`check` does not follow imports**, and `impureImports` patterns see the URI as written (see [What a gate must not import](#what-a-gate-must-not-import)).
-- **A pattern of `forbiddenSource.add` is tested against the text of a line**, as upstream does, so it matches in a comment too. The built-in rules do not. Coverage ignore comments are found in the text of the line as well, because that is how the coverage tool finds them: one inside a string literal is honoured by the tool, and reported here.
+- **A part named `*.g.dart` or `*.freezed.dart` is not read**, in a gate and in the files it reaches: it is taken for the output of a generator. A file with such a name that somebody wrote by hand is not checked.
+- **`check` follows imports into the package, not into other packages.** What `package:decimal` imports is not read; a package is judged by its name. `impureImports` patterns see the URI as written (see [What a gate must not import](#what-a-gate-must-not-import)).
+- **A pattern of `forbiddenSource.add` is tested against the code of a line.** A comment is not code (upstream tests the text of the line, comments included); a string literal is. Coverage ignore comments are found in the text of the line as well, because that is how the coverage tool finds them: one inside a string literal is honoured by the tool, and reported here.
 - **`check` parses with the newest language version its `analyzer` knows.** The range is wide (`>=8.2.0 <15.0.0`) so that it resolves next to the code generators of an app; an app that pins an old `analyzer` and uses newer syntax in a gate gets a syntax error from `check`.
 - **Tests are not checked for mocking the gate.** Upstream rejects `jest.mock` of the module under test; Dart has no module mock.
 - **The tool does not judge what belongs in `gates`.** Whether every important decision has been extracted and listed is for people to review; `candidates` is where the known gaps are written down.
@@ -822,7 +859,8 @@ Until 0.1.1 `test_gates mutation` made the mutants and ran the tests itself. Fro
 1. Install the tool, on every machine that runs `mutation` and in CI: `dart pub global activate dart_mutant` (Dart 3.11 or later). Without it `mutation` ends with exit code 2.
 2. A test command that was given behind `--` now goes behind a second one: `test_gates mutation -- fvm flutter test --no-pub` becomes `test_gates mutation -- -- fvm flutter test --no-pub`. What follows the first `--` are options of `dart_mutant run` (`--jobs`, `--shard`, `--html`). The old form is refused with exit code 2.
 3. Run `test_gates mutation --force` once. The mutators of 0.1 make the same mutants as before, so every `equivalentMutants` and `expectedTimeouts` entry still matches. **New survivors are to be expected**: `dart_mutant` also changes members and numbers by their types (`MethodExpression`, `NumberLiteral`, the guard mutators, see [Mutators](#mutators)), which 0.1 did not. Each is a decision no test checked. Fix the test; allow only what no input can observe.
-4. Delete `.dart_tool/test_gates/mutation/`. The results and backups that 0.1 kept there are no longer read. (When a run of 0.1 was killed, `git diff` shows the mutant it left in a gate: put the gate back first.)
+4. Run `test_gates check`. It is stricter than in 0.1: the imports of a gate are followed into the files of the package ([What a gate reaches](#what-a-gate-reaches)), more packages are impure by default ([What a gate must not import](#what-a-gate-must-not-import)), and a misspelt key in an `equivalentMutants` entry is a violation. For a file that is fine although the check says otherwise, there is `settings.impureImports.allow`. Look at the patterns that are there already: one without `^` and `$` is tried on every import of every file on the way, and stops the following wherever it matches.
+5. Delete `.dart_tool/test_gates/mutation/`. The results and backups that 0.1 kept there are no longer read. (When a run of 0.1 was killed, `git diff` shows the mutant it left in a gate: put the gate back first.)
 
 What else changed: the lines per gate are printed by `dart_mutant`; on a machine with 8 processors or more the gates are no longer changed in place; `mutation-result` refuses the report of a part of a run; exit code 2 also means that the tool is missing.
 
@@ -831,7 +869,9 @@ What else changed: the lines per gate are printed by `dart_mutant`; on a machine
 | | npm `@t09tanaka/test-gates` | Dart `test_gates` |
 | --- | --- | --- |
 | File | `test-gates.json` | the same file, the same keys |
-| Unknown keys | rejected (exit code 2) | rejected in the same places |
+| Unknown keys | rejected (exit code 2) | rejected in the same places, and in an entry of `equivalentMutants` / `expectedTimeouts` (exit code 1) |
+| Imports of a gate | the gate's own | followed into the files of the package ([What a gate reaches](#what-a-gate-reaches)) |
+| `forbiddenSource.add` | tested against the text of a line | tested against the code of a line: a comment does not match |
 | Default `gateExtensions` | `.ts .mts .cts .js .mjs .cjs` | `.dart` |
 | `lcov` | lines only (`LH == LF` from `DA:`) | lines **and branches** |
 | `lcov` output | passing gates listed with `✓` | the same, plus `✗` lines with the numbers of failing gates |

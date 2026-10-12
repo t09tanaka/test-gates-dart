@@ -35,6 +35,15 @@ class ParsedManifest {
   final List<Violation> violations;
 }
 
+/// The keys of an entry of `equivalentMutants` / `expectedTimeouts`.
+const _allowanceKeys = [
+  'mutator',
+  'original',
+  'replacement',
+  'reason',
+  'occurrence',
+];
+
 /// What is wrong with one allowance. Empty when it can be used for matching.
 List<String> _allowanceProblems(Object? entry) {
   final object = asObject(entry);
@@ -42,6 +51,10 @@ List<String> _allowanceProblems(Object? entry) {
     return [' must be an object'];
   }
   return [
+    // A misspelt "occurrence" would be an entry without one, which then
+    // points at another mutant than the one that was meant.
+    for (final key in object.keys)
+      if (!_allowanceKeys.contains(key)) ': unknown key ${quote(key)}',
     if (!isFilled(object['mutator'])) ': "mutator" is missing',
     if (!isFilled(object['original'])) ': "original" is missing',
     // An empty replacement is real: a string literal can be mutated to "".

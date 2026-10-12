@@ -33,6 +33,47 @@ void main() {
     });
   });
 
+  group('describeAttempt', () {
+    test('a command that could not be started', () {
+      expect(
+        describeAttempt(['dart_mutant'], startError: 'No such file'),
+        '"dart_mutant --version" could not be started (No such file)',
+      );
+    });
+
+    test('a command that ended: its exit code and the first line it '
+        'printed', () {
+      expect(
+        describeAttempt(
+          ['dart', 'pub', 'global', 'run', 'dart_mutant'],
+          exitCode: 65,
+          output: '\n  \n  No active package dart_mutant.  \nmore\n',
+        ),
+        '"dart pub global run dart_mutant --version" ended with exit code '
+        '65 and printed "No active package dart_mutant."',
+      );
+      expect(
+        describeAttempt(['x'], exitCode: 0, output: ' \n\n'),
+        '"x --version" ended with exit code 0 and printed nothing',
+      );
+      expect(
+        describeAttempt(['x'], exitCode: 1),
+        '"x --version" ended with exit code 1 and printed nothing',
+      );
+    });
+
+    test('a long line is cut at 200 characters', () {
+      expect(
+        describeAttempt(['x'], exitCode: 0, output: 'a' * 200),
+        '"x --version" ended with exit code 0 and printed "${'a' * 200}"',
+      );
+      expect(
+        describeAttempt(['x'], exitCode: 0, output: '${'a' * 200}b'),
+        '"x --version" ended with exit code 0 and printed "${'a' * 200}…"',
+      );
+    });
+  });
+
   group('dartMutantVersionOf', () {
     test('the version, when the command printed one and ended with 0', () {
       expect(dartMutantVersionOf(0, '0.1.0\n'), '0.1.0');
@@ -67,10 +108,12 @@ void main() {
   });
 
   group('the supported versions', () {
-    test('are 0.1.0 and every later 0.1.x, said in one place', () {
-      expect(supportedDartMutant, (major: 0, minor: 1, patch: 0));
-      expect(dartMutantConstraint(), '^0.1.0');
-      expect(dartMutantRange(), '0.1.0 or later, below 0.2.0');
+    test('are 0.1.1 and every later 0.1.x, said in one place', () {
+      expect(supportedDartMutant, (major: 0, minor: 1, patch: 1));
+      expect(dartMutantConstraint(), '^0.1.1');
+      expect(dartMutantRange(), '0.1.1 or later, below 0.2.0');
+      expect(isSupportedDartMutant('0.1.0'), isFalse);
+      expect(isSupportedDartMutant('0.1.1'), isTrue);
     });
 
     test('a higher lowest version: one constant decides the check and both '
@@ -91,7 +134,7 @@ void main() {
     });
 
     test('every patch of it, with or without a suffix', () {
-      for (final version in ['0.1.0', '0.1.1', '0.1.27', '0.1.3-dev.1']) {
+      for (final version in ['0.1.1', '0.1.2', '0.1.27', '0.1.3-dev.1']) {
         expect(isSupportedDartMutant(version), isTrue, reason: version);
       }
     });

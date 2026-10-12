@@ -486,4 +486,105 @@ void main() {
       );
     });
   });
+
+  group('a URI that Dart reads as another one than is written', () {
+    List<int> uncheckable(String source) =>
+        parseDartSource(source).uncheckableUris;
+
+    test('an upper-case scheme, a percent sign and file: are not judged by '
+        'their text: the line is reported, and the URI is no import', () {
+      final parsed = parseDartSource(
+        "import 'DART:io';\n"
+        "import 'Package:http/http.dart';\n"
+        "import 'dart:%69o';\n"
+        "import 'package:%68ttp/http.dart';\n"
+        "export 'file:///tmp/a.dart';\n"
+        "import 'FILE:///tmp/a.dart';\n"
+        "import 'a%2Fb.dart';\n"
+        "part 'File:a.dart';\n",
+      );
+      expect(parsed.uncheckableUris, [1, 2, 3, 4, 5, 6, 7, 8]);
+      expect(parsed.imports, isEmpty);
+    });
+
+    test('every URI of a conditional import is looked at', () {
+      expect(
+        uncheckable(
+          "import 'a.dart'\n    if (dart.library.io) 'DART:io'\n"
+          "    if (dart.library.html) 'b.dart';\n",
+        ),
+        [2],
+      );
+    });
+
+    test('plain URIs: lower-case schemes, relative paths, names with '
+        'capitals and with "file" in them', () {
+      final parsed = parseDartSource(
+        "import 'dart:io';\n"
+        "import 'package:http/http.dart';\n"
+        "import 'Models/Fee.dart';\n"
+        "import '../file.dart';\n"
+        "import 'file_utils.dart';\n"
+        "import 'package:file/file.dart';\n"
+        "import 'shared:clock.dart';\n"
+        "import 'a+b.c-d:x.dart';\n",
+      );
+      expect(parsed.uncheckableUris, isEmpty);
+      expect(parsed.imports, hasLength(8));
+    });
+  });
+
+  group('code: the source with its comments blanked', () {
+    test('every kind of comment becomes blanks of the same length; the '
+        'code, strings included, stays', () {
+      const source =
+          '// first\n'
+          'final a = 1; // tail\n'
+          '/// doc [a]\n'
+          "final b = '// not a comment'; /* in */ final c = 2;\n"
+          '/* over\n'
+          '   two lines */ final d = 3;\n'
+          '// last';
+      expect(
+        parseDartSource(source).code,
+        '        \n'
+        'final a = 1;        \n'
+        '           \n'
+        "final b = '// not a comment';          final c = 2;\n"
+        '       \n'
+        '                final d = 3;\n'
+        '       ',
+      );
+    });
+
+    test('a source without a comment is itself', () {
+      const source = 'final a = 1;\n\nint f() => a;\n';
+      expect(parseDartSource(source).code, source);
+      expect(parseDartSource('').code, '');
+    });
+
+    test('lines keep their numbers with CRLF, and a comment that holds a '
+        'line break keeps the break', () {
+      const source = '/* a\r\n b */\r\nfinal a = 1; // x\r\n';
+      final code = parseDartSource(source).code;
+      expect(code, '    \r\n     \r\nfinal a = 1;     \r\n');
+      expect(code.length, source.length);
+    });
+
+    test('a byte order mark is not part of it', () {
+      expect(
+        parseDartSource('﻿// a\nfinal a = 1;\n').code,
+        '    \n'
+        'final a = 1;\n',
+      );
+    });
+
+    test('comments only, and a comment in front of a directive', () {
+      expect(parseDartSource('// a\n// b\n').code, '    \n    \n');
+      expect(
+        parseDartSource("// a\nimport 'dart:math'; // b\n").code,
+        "    \nimport 'dart:math';     \n",
+      );
+    });
+  });
 }

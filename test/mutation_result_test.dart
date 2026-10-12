@@ -237,8 +237,61 @@ void main() {
         expect(verdict.violations, isEmpty);
         expect(verdict.survivors, isEmpty);
         expect(numbers(verdict.summary), [2, 1, 0, 0, 1, 0, 0]);
+        expect(
+          [
+            for (final mutant in verdict.notEvaluable)
+              formatListedMutant(mutant),
+          ],
+          [
+            'src/age.ts:1:41 / EqualityOperator / age >= 18 → age > 18 ($status)',
+          ],
+        );
+        expect(verdict.notEvaluable.single.statusReason, isNull);
       });
     }
+
+    test('lists what could not be evaluated, in the order of the source, '
+        'with what the report says about it', () {
+      final report = parseMutationReport(
+        jsonEncode({
+          'files': {
+            gatePath: {
+              'source': source,
+              'mutants': [
+                for (final (line, column, status, reason) in [
+                  (3, 42, 'CompileError', 'second'),
+                  (2, 45, 'Killed', 'not listed'),
+                  (1, 41, 'RuntimeError', 7),
+                  (1, 1, 'Survived', null),
+                ])
+                  {
+                    'mutatorName': 'M',
+                    'replacement': 'x',
+                    'status': status,
+                    'statusReason': reason,
+                    'location': {
+                      'start': {'line': line, 'column': column},
+                      'end': {'line': line, 'column': column + 1},
+                    },
+                  },
+              ],
+            },
+          },
+        }),
+      );
+      final verdict = judgeMutationReport(
+        gates: [gate()],
+        report: report,
+        readSource: (_) => source,
+      );
+      expect(
+        [
+          for (final mutant in verdict.notEvaluable)
+            (mutant.line, mutant.status, mutant.statusReason),
+        ],
+        [(1, 'RuntimeError', null), (3, 'CompileError', 'second')],
+      );
+    });
 
     test('fails on an Ignored mutant and says why', () {
       final verdict = judge([firstComparison('Ignored'), yesLiteral('Killed')]);
@@ -1160,10 +1213,12 @@ void main() {
   });
 
   group('a report of dart_mutant', () {
-    // Written by dart_mutant 0.1.0 for test/fixtures/mutation/package (a
-    // function with one weak test): `dart_mutant run --plan <plan> --report
-    // <this file>`. test/commands/real_mutation_test.dart runs the tool on
-    // the same package.
+    // A report as dart_mutant 0.1.0 wrote it for
+    // test/fixtures/mutation/package (a function with one weak test):
+    // `dart_mutant run --plan <plan> --report <this file>`. It is a record,
+    // and its numbers are those of that version.
+    // test/commands/real_mutation_test.dart runs the tool that is installed
+    // on the same package, and expects no numbers.
     final text = File(
       'test/fixtures/mutation/dart_mutant_report.json',
     ).readAsStringSync();

@@ -46,81 +46,72 @@ List<Violation> _syntaxErrors(String path, DartSource parsed) => [
     ),
 ];
 
-/// Checks the text of a gate: it must be a pure module with no way to opt out
-/// of measurement.
-///
-/// [packageName] is `name` of pubspec.yaml: `package:<name>/…` is then an
-/// import of the package's own `lib/`.
-List<Violation> scanGateSource(
-  String gatePath,
-  String source,
-  ResolvedSettings settings, {
-  String? packageName,
+/// Something a file does that a pure module must not, at a line of it.
+typedef _Finding = ({int line, String message});
+
+/// What the code of a file does that a pure module must not, whatever its
+/// directives are: reads of the environment, and what
+/// `settings.forbiddenSource` adds. The patterns are tested against the code
+/// of each line, not against what a comment on it says.
+List<_Finding> _sourceFindings(
+  DartSource parsed,
+  ResolvedSettings settings,
+) => [
+  if (settings.forbiddenSourceDefaults)
+    for (final read in parsed.environmentReads)
+      (
+        line: read.line,
+        message:
+            'reads ${read.what} (not a pure module). Take the value as '
+            'an argument',
+      ),
+  for (final (index, line) in _lines(parsed.code).indexed)
+    for (final rule in settings.forbiddenSource)
+      if (rule.regex.hasMatch(line)) (line: index + 1, message: rule.reason),
+  for (final line in parsed.uncheckableUris)
+    (
+      line: line,
+      message:
+          'a URI that is not written plainly cannot be checked (a plain '
+          'string, a lower-case scheme, no "%", not file:)',
+    ),
+];
+
+bool _exempt(ImportRef imported, ResolvedSettings settings) =>
+    settings.allowedImports.any((regex) => regex.hasMatch(imported.uri));
+
+/// What the directives of the file at [path] bring in that a pure module
+/// must not. With [partRule] (the gate itself) a part that no generator
+/// wrote is a finding as well: it is code of the gate in another file.
+List<_Finding> _directiveFindings(
+  String path,
+  DartSource parsed,
+  ResolvedSettings settings,
+  List<ImportAlias> aliases, {
+  required bool partRule,
 }) {
-  final parsed = parseDartSource(source);
-  final aliases = aliasesFor(packageName, settings.importAliases);
-  final violations = [
-    ..._syntaxErrors(gatePath, parsed),
-    ..._coverageIgnores(gatePath, source),
-  ];
-  void report(int line, String message) =>
-      violations.add(Violation(file: gatePath, line: line, message: message));
-
-  if (parsed.partOfLine case final line?) {
-    report(
-      line,
-      'a part of another library (its imports are in that library and '
-      'cannot be checked). Make it a library of its own',
-    );
-  }
-  if (settings.forbiddenSourceDefaults) {
-    for (final read in parsed.environmentReads) {
-      report(
-        read.line,
-        'reads ${read.what} (not a pure module). Take the value as an argument',
-      );
-    }
-  }
-  for (final (index, line) in _lines(source).indexed) {
-    for (final rule in settings.forbiddenSource) {
-      if (rule.regex.hasMatch(line)) {
-        report(index + 1, rule.reason);
-      }
-    }
-  }
-  for (final shared in parsed.sharedBlockLines) {
-    report(
-      shared.line,
-      '${shared.what} blocks start on this line and share one branch entry '
-      'in lcov, so an untested one is not reported. Run dart format, and '
-      'give nested control flow braces',
-    );
-  }
-  for (final line in parsed.uncheckableUris) {
-    report(line, 'a URI that is not a plain string cannot be checked');
-  }
-
+  final findings = <_Finding>[];
   for (final imported in parsed.imports) {
     final what = _directive(imported.kind);
-    final exempt = settings.allowedImports.any(
-      (regex) => regex.hasMatch(imported.uri),
-    );
-    final before = violations.length;
+    void report(String message) =>
+        findings.add((line: imported.line, message: message));
+    final exempt = _exempt(imported, settings);
+    final before = findings.length;
     if (!exempt) {
       for (final rule in settings.impureImports) {
         if (rule.regex.hasMatch(imported.uri)) {
-          report(imported.line, '$what of "${imported.uri}" (${rule.reason})');
+          report('$what of "${imported.uri}" (${rule.reason})');
         }
       }
     }
     if (imported.kind == DirectiveKind.part) {
       // A part is the gate's own code in another file: it is not scanned
       // here, and its coverage is recorded under its own path.
-      if (!exempt &&
-          violations.length == before &&
+      if (partRule &&
+          !exempt &&
+          findings.length == before &&
           !isGeneratedPart(imported.uri)) {
         report(
-          imported.line,
           'part "${imported.uri}" is code of the gate in a file that is not '
           'checked or measured (only generated *.g.dart / *.freezed.dart parts are allowed). '
           'Make it a library and list it as a gate',
@@ -139,7 +130,6 @@ List<Violation> scanGateSource(
       ];
       if (hit.isNotEmpty) {
         report(
-          imported.line,
           'use of ${hit.join(', ')} from "${rule.module}" (${rule.reason})',
         );
       }
@@ -147,21 +137,180 @@ List<Violation> scanGateSource(
     // Allowlist mode adds to the rules above; an import they already reject
     // is reported once.
     if (settings.importMode == ImportMode.allowlist &&
-        violations.length == before) {
-      final target = resolveUri(imported.uri, gatePath, aliases);
+        findings.length == before) {
+      final target = resolveUri(imported.uri, path, aliases);
       if (target == null) {
         if (judgePackageImport(imported, settings.importAllow)
             case final reason?) {
-          report(imported.line, reason);
+          report(reason);
         }
       } else if (judgeProjectImport(target, settings.impurePaths)
           case final reason?) {
-        report(imported.line, '$what of "${imported.uri}" ($reason)');
+        report('$what of "${imported.uri}" ($reason)');
       }
     }
   }
+  return findings;
+}
 
-  return _sorted(violations);
+/// The files of the package that the file at [path] brings in: what it
+/// imports and exports, and its parts that no generator wrote. (In the gate
+/// itself such a part is a finding, so it is not followed.) A URI that
+/// `settings.impureImports.allow` exempts is not followed, and neither is
+/// another package or the SDK: those are judged by their names. A directive
+/// that is a finding already ([rejected], by line) is not followed either:
+/// it has to go, with whatever is behind it.
+List<({ImportRef from, String target})> _projectFiles(
+  String path,
+  DartSource parsed,
+  ResolvedSettings settings,
+  List<ImportAlias> aliases,
+  List<_Finding> rejected,
+) => [
+  for (final imported in parsed.imports)
+    if (!rejected.any((finding) => finding.line == imported.line) &&
+        !_exempt(imported, settings) &&
+        (imported.kind != DirectiveKind.part || !isGeneratedPart(imported.uri)))
+      if (resolveUri(imported.uri, path, aliases) case final target?)
+        (from: imported, target: target),
+];
+
+/// What the gate at [gatePath] reaches through the files of the package it
+/// imports: the same rules as for the gate's own imports and reads, applied
+/// to every file on the way, however many imports away. Each finding is
+/// reported once, at the directive of the gate that leads to it, with the
+/// file and line it is in and the files in between.
+///
+/// A file is read once, so imports that form a circle end.
+List<Violation> _reached(
+  String gatePath,
+  DartSource gate,
+  ResolvedSettings settings,
+  List<ImportAlias> aliases,
+  List<_Finding> rejected,
+  String? Function(String path) readSource,
+) {
+  final violations = <Violation>[];
+  final seen = {gatePath};
+  // Breadth first: the shortest way to a file is the one that is reported.
+  final queue = [
+    for (final step in _projectFiles(
+      gatePath,
+      gate,
+      settings,
+      aliases,
+      rejected,
+    ))
+      (start: step.from, path: step.target, way: [gatePath, step.target]),
+  ];
+  for (var index = 0; index < queue.length; index++) {
+    final (:start, :path, :way) = queue[index];
+    if (!seen.add(path)) {
+      continue;
+    }
+    void report(String what) => violations.add(
+      Violation(
+        file: gatePath,
+        line: start.line,
+        message:
+            '${_directive(start.kind)} of "${start.uri}" reaches $what '
+            '(${way.join(' → ')})',
+      ),
+    );
+    final source = readSource(path);
+    if (source == null) {
+      report(
+        '$path, which cannot be read, so what it brings in cannot be '
+        'checked. When a generator writes that file, run it before check',
+      );
+      continue;
+    }
+    final parsed = parseDartSource(source);
+    final directives = _directiveFindings(
+      path,
+      parsed,
+      settings,
+      aliases,
+      partRule: false,
+    );
+    final findings = [
+      for (final error in parsed.syntaxErrors)
+        (
+          line: error.line,
+          message: 'code that cannot be parsed as Dart (${error.what})',
+        ),
+      ..._sourceFindings(parsed, settings),
+      ...directives,
+    ]..sort((a, b) => a.line.compareTo(b.line));
+    for (final finding in findings) {
+      report('$path:${finding.line}: ${finding.message}');
+    }
+    for (final step in _projectFiles(
+      path,
+      parsed,
+      settings,
+      aliases,
+      directives,
+    )) {
+      queue.add((start: start, path: step.target, way: [...way, step.target]));
+    }
+  }
+  return violations;
+}
+
+/// Checks the text of a gate: it must be a pure module with no way to opt out
+/// of measurement.
+///
+/// [packageName] is `name` of pubspec.yaml: `package:<name>/…` is then an
+/// import of the package's own `lib/`.
+///
+/// [readSource] gives the content of a file of the package, or `null` when
+/// it cannot be read. With it the imports are followed: what the gate
+/// reaches through the files it imports is checked like the gate itself (see
+/// [_reached]). Without it only the gate's own directives are read.
+List<Violation> scanGateSource(
+  String gatePath,
+  String source,
+  ResolvedSettings settings, {
+  String? packageName,
+  String? Function(String path)? readSource,
+}) {
+  final parsed = parseDartSource(source);
+  final aliases = aliasesFor(packageName, settings.importAliases);
+  Violation at(_Finding finding) =>
+      Violation(file: gatePath, line: finding.line, message: finding.message);
+  final directives = _directiveFindings(
+    gatePath,
+    parsed,
+    settings,
+    aliases,
+    partRule: true,
+  );
+  return _sorted([
+    ..._syntaxErrors(gatePath, parsed),
+    ..._coverageIgnores(gatePath, source),
+    if (parsed.partOfLine case final line?)
+      Violation(
+        file: gatePath,
+        line: line,
+        message:
+            'a part of another library (its imports are in that library and '
+            'cannot be checked). Make it a library of its own',
+      ),
+    ..._sourceFindings(parsed, settings).map(at),
+    for (final shared in parsed.sharedBlockLines)
+      Violation(
+        file: gatePath,
+        line: shared.line,
+        message:
+            '${shared.what} blocks start on this line and share one branch '
+            'entry in lcov, so an untested one is not reported. Run dart '
+            'format, and give nested control flow braces',
+      ),
+    ...directives.map(at),
+    if (readSource != null)
+      ..._reached(gatePath, parsed, settings, aliases, directives, readSource),
+  ]);
 }
 
 /// Checks the text of a gate's test: nothing skipped, nothing focused, no

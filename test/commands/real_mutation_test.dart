@@ -108,30 +108,39 @@ void main() {
     }
     final source = File('${dir.path}/$gate').readAsBytesSync();
 
-    // The tool ends with exit code 1 here: mutants survive.
+    // The tool ends with exit code 1 here: mutants survive. How many, and
+    // which, is the tool's to decide and may change with its version: what
+    // is checked is that the two tools agree, not the numbers. The mutants
+    // of the syntax tree are the same in every version, so one of those is
+    // looked for by name.
     expect(await cli(['mutation', '--force']), 1);
+    final count = RegExp(
+      r'^test_gates mutation: (\d+) surviving mutant\(s\) not in the allow '
+      r'list$',
+    ).firstMatch(err.first);
+    expect(count, isNotNull, reason: err.first);
+    final survivors = int.parse(count![1]!);
+    expect(survivors, greaterThan(0));
+    final listed = err.sublist(1, 1 + survivors);
+    expect(listed, everyElement(startsWith('  - lib/steps.dart:')));
     expect(
-      err.first,
-      'test_gates mutation: 9 surviving mutant(s) not in the allow list',
-    );
-    expect(
-      err.last,
-      'test_gates mutation: FAILED (mutants 14 / detected 5 (timeout 0) / '
-      'allowed equivalent 0 / not evaluable 0 / unallowed survivors 9)',
-    );
-    expect(
-      err,
+      listed,
       contains(
-        '  - lib/steps.dart:6:24 / MethodExpression / .abs() →  (Survived)',
-      ),
-    );
-    expect(
-      err,
-      contains(
-        '  - lib/steps.dart:5:25 / NumberLiteral / 0 → 1 / occurrence 4 of 4 '
+        '  - lib/steps.dart:4:17 / ConditionalExpression / from < 0 → false '
         '(Survived)',
       ),
     );
+    final total = RegExp(
+      r'^test_gates mutation: FAILED \(mutants (\d+) / detected (\d+) '
+      r'\(timeout 0\) / allowed equivalent 0 / not evaluable (\d+) / '
+      r'unallowed survivors (\d+)\)$',
+    ).firstMatch(err.last);
+    expect(total, isNotNull, reason: err.last);
+    final [mutants, detected, notEvaluable, unallowed] = [
+      for (var group = 1; group <= 4; group++) int.parse(total![group]!),
+    ];
+    expect(unallowed, survivors);
+    expect(detected + notEvaluable + unallowed, mutants);
     expect(File('${dir.path}/$gate').readAsBytesSync(), source);
     expect(
       File('${dir.path}/.dart_tool/test_gates/mutation-plan.json').existsSync(),
@@ -146,27 +155,28 @@ void main() {
                 as Map<String, Object?>)
             ..['reason'] = 'for the test',
     ];
-    expect(printed, hasLength(9));
+    expect(printed, hasLength(survivors));
     manifest(printed);
 
     // Nothing changed for the tool: it takes its results from the last run,
     // and still ends with exit code 1. The verdict is that of the report.
     expect(await cli(['mutation']), 0);
     expect(out, [
-      'test_gates mutation: OK (mutants 14 / detected 5 (timeout 0) / '
-          'allowed equivalent 9 / not evaluable 0 / unallowed survivors 0)',
+      'test_gates mutation: OK (mutants $mutants / detected $detected '
+          '(timeout 0) / allowed equivalent $survivors / not evaluable '
+          '$notEvaluable / unallowed survivors 0)',
     ]);
     expect(err, isEmpty);
     expect(run(['mutation-result', '--dir', dir.path], io), 0);
 
-    // One entry less: that mutant is back.
+    // One entry less: that mutant is back, and no other.
     manifest(printed.sublist(1));
     expect(await cli(['mutation', '--gate', gate, '--', '--jobs', '1']), 1);
     expect(
-      err[1],
-      '  - lib/steps.dart:4:17 / ConditionalExpression / from < 0 → false '
-      '(Survived)',
+      err.first,
+      'test_gates mutation: 1 surviving mutant(s) not in the allow list',
     );
+    expect(err[1], listed.first);
     expect(File('${dir.path}/$gate').readAsBytesSync(), source);
 
     // A part of the run is written and not judged, and is no result.

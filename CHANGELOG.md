@@ -9,9 +9,11 @@ steps under "Upgrading from 0.1".
 
 ### Breaking
 
-- `mutation` needs `dart_mutant` 0.1.x (`dart pub global activate
+- The lowest `dart_mutant` that is supported is 0.1.1: an experimental
+  option of 0.1.0 could report a mutant as killed that survives.
+- `mutation` needs `dart_mutant` 0.1.1 or a later 0.1.x (`dart pub global activate
   dart_mutant`; Dart 3.11 or later). It is looked for on `PATH`, then as
-  `dart pub global run dart_mutant`. When it is missing, or is not a 0.1.x,
+  `dart pub global run dart_mutant`. When it is missing, or is not one of those,
   the exit code is 2 and nothing is run. The other commands run on Dart 3.9
   as before.
 - What follows `--` on the command line of `mutation` is handed to
@@ -40,6 +42,39 @@ steps under "Upgrading from 0.1".
 - The lines `mutation` printed per gate are now printed by `dart_mutant`, in
   its format, and the report names `dart_mutant` as its `framework`.
 
+- `check` follows the imports of a gate. The imports and exports that point
+  into the package are followed, file by file, and what a file on the way
+  imports, reads from the environment or matches of
+  `settings.forbiddenSource` is a violation of the gate, reported with the
+  file, the line and the files in between. A gate that passed because the
+  impure import was one file away now fails. A file that is to be left out,
+  with what is behind it, goes into `settings.impureImports.allow`. A file
+  on the way that cannot be read is a violation as well.
+- More packages are impure by default: `go_router`, `auto_route`,
+  `cached_network_image`, `google_fonts` (UI); `file`, `process`, `platform`
+  (files, processes, the environment); `connectivity_plus`,
+  `device_info_plus`, `package_info_plus`, `share_plus`, `battery_plus`,
+  `sensors_plus`, `network_info_plus`, `url_launcher`, `permission_handler`,
+  `geolocator`, `image_picker`, `file_picker`, `local_auth` (the device);
+  `socket_io_client`, `mqtt_client` (network); `get_storage`, `realm`,
+  `floor` (persistence); `hydrated_bloc`, `replay_bloc`, `state_notifier`,
+  `signals`, `async_redux`, `watch_it`, `stacked` (state management);
+  `supabase`, `appwrite`, `googleapis`, `google_sign_in`, `in_app_purchase`
+  (services), and `realm_dart`, `dart_appwrite`, `googleapis_auth`,
+  `signals_core` (the Dart-only packages of four of those).
+  `package:file` and `package:platform` are also what a pure function takes
+  a file system or a platform as; `settings.impureImports.allow` exempts
+  them, as it exempts any other.
+- `check` reports an import whose URI is not written plainly (an
+  upper-case scheme, a `%`, `file:`): Dart reads `DART:io` as `dart:io`, and
+  the rules compare the text. An import that leaves the package (`../..`
+  above its root) is reported as a file that cannot be read, and a
+  `pubspec.yaml` whose `name` is not found is a violation, because
+  `package:<name>/` could then not be followed.
+- A key that an entry of `equivalentMutants` / `expectedTimeouts` does not
+  have is a violation (exit code 1), and the entry is not used. A misspelt
+  `occurrence` was read as an entry without one.
+
 ### Changed
 
 - `mutation` writes the gates and their tests as a plan file
@@ -67,6 +102,18 @@ steps under "Upgrading from 0.1".
 - `lcov`: the parser no longer trims the fields of a `DA:` / `BRDA:` / `LF:`
   / `LH:` entry before it reads them as numbers. Blanks around a number are
   read as before; the calls did nothing.
+
+- A pattern of `settings.forbiddenSource.add` is tested against the code of
+  a line. What a comment or a doc comment says no longer matches; the text
+  of a string literal still does.
+- `mutation --not-evaluable` and `mutation-result --not-evaluable` list the
+  mutants that could not be evaluated, with the message of the compiler when
+  the report has it. Without the option they are counted, as before.
+- When `dart_mutant` is not found, the message says what each command that
+  was tried did: that it could not be started, or its exit code and the
+  first line it printed.
+- When the tool does not end within 60 seconds of a signal and is killed,
+  the message says so, and that a gate may still have a mutant in it.
 
 ### Removed
 

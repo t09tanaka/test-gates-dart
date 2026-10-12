@@ -26,11 +26,401 @@ List<String> scan(
     violation.toString().substring(gate.length + 1),
 ];
 
+/// The gate with the files of [files] (path → content) around it: the
+/// imports are followed.
+List<String> reach(
+  String source,
+  Map<String, String> files, {
+  Map<String, Object?> settings = const {},
+  List<String>? read,
+}) => [
+  for (final violation in scanGateSource(
+    gate,
+    source,
+    resolveSettings(settings),
+    packageName: 'app',
+    readSource: (path) {
+      read?.add(path);
+      return files[path];
+    },
+  ))
+    violation.toString().substring(gate.length + 1),
+];
+
 const allowlist = {
   'imports': {'mode': 'allowlist'},
 };
 
 void main() {
+  group('what a gate reaches through the files it imports', () {
+    const io = 'import of "dart:io" (file system / network / process access)';
+
+    test('pure files, however many: nothing', () {
+      final read = <String>[];
+      expect(
+        reach(
+          "import 'zone.dart';\nimport 'package:app/utils/units.dart';\n"
+          "export '../money.dart';\n",
+          {
+            'lib/models/zone.dart': "import 'dart:math';\nconst a = 1;\n",
+            'lib/utils/units.dart': "import '../money.dart';\n",
+            'lib/money.dart': 'const cents = 100;\n',
+          },
+          read: read,
+        ),
+        isEmpty,
+      );
+      // Each file once, the nearest first.
+      expect(read, [
+        'lib/models/zone.dart',
+        'lib/utils/units.dart',
+        'lib/money.dart',
+      ]);
+    });
+
+    test('an impure import two files away is reported at the import of the '
+        'gate, with the file, the line and the way', () {
+      expect(
+        reach("\nimport 'zone.dart';\n", {
+          'lib/models/zone.dart': "import 'dart:math';\nimport 'clock.dart';\n",
+          'lib/models/clock.dart': "// the time\n\nimport 'dart:io';\n",
+        }),
+        [
+          '2: import of "zone.dart" reaches lib/models/clock.dart:3: $io '
+              '(lib/models/shipping_fee.dart → lib/models/zone.dart → '
+              'lib/models/clock.dart)',
+        ],
+      );
+    });
+
+    test('an export is followed like an import, in the gate and on the '
+        'way', () {
+      expect(
+        reach("export 'all.dart';\n", {
+          'lib/models/all.dart': "export 'clock.dart';\n",
+          'lib/models/clock.dart': "export 'dart:io';\n",
+        }),
+        [
+          '1: export of "all.dart" reaches lib/models/clock.dart:1: export '
+              'of "dart:io" (file system / network / process access) '
+              '(lib/models/shipping_fee.dart → lib/models/all.dart → '
+              'lib/models/clock.dart)',
+        ],
+      );
+    });
+
+    test('imports that form a circle end, and the gate itself is not read '
+        'again', () {
+      final read = <String>[];
+      expect(
+        reach("import 'a.dart';\n", {
+          'lib/models/a.dart':
+              "import 'b.dart';\nimport 'shipping_fee.dart';\n",
+          'lib/models/b.dart': "import 'a.dart';\nimport 'dart:io';\n",
+        }, read: read),
+        [
+          '1: import of "a.dart" reaches lib/models/b.dart:2: $io '
+              '(lib/models/shipping_fee.dart → lib/models/a.dart → '
+              'lib/models/b.dart)',
+        ],
+      );
+      expect(read, ['lib/models/a.dart', 'lib/models/b.dart']);
+    });
+
+    test('a file that two imports lead to is reported once, by the shortest '
+        'way', () {
+      expect(
+        reach("import 'far.dart';\nimport 'near.dart';\n", {
+          'lib/models/far.dart': "import 'between.dart';\n",
+          'lib/models/between.dart': "import 'clock.dart';\n",
+          'lib/models/near.dart': "import 'clock.dart';\n",
+          'lib/models/clock.dart': "import 'dart:io';\n",
+        }),
+        [
+          '2: import of "near.dart" reaches lib/models/clock.dart:1: $io '
+              '(lib/models/shipping_fee.dart → lib/models/near.dart → '
+              'lib/models/clock.dart)',
+        ],
+      );
+    });
+
+    test('every finding of a file on the way, in the order of its lines: a '
+        'read of the environment, an added pattern, an added name, a URI '
+        'that is no plain string, a syntax error', () {
+      expect(
+        reach(
+          "import 'env.dart';\n",
+          {
+            'lib/models/env.dart':
+                "import 'dart:math';\n"
+                "import 'a\${x}.dart';\n"
+                "const a = String.fromEnvironment('A');\n"
+                '// DateTime.now() in a comment\n'
+                'final b = DateTime.now();\n'
+                'final c = Random();\n'
+                'final d = ;\n',
+          },
+          settings: {
+            'forbiddenSource': {
+              'add': [
+                {'pattern': r'DateTime\.now\(', 'reason': 'reads the clock'},
+              ],
+            },
+            'impureNamedImports': {
+              'add': [
+                {
+                  'module': 'dart:math',
+                  'names': ['Random'],
+                  'reason': 'not repeatable',
+                },
+              ],
+            },
+          },
+        ),
+        [
+          for (final finding in [
+            '1: use of Random from "dart:math" (not repeatable)',
+            '2: a URI that is not written plainly cannot be checked (a plain string, a lower-case scheme, no "%", not file:)',
+            '3: reads String.fromEnvironment (not a pure module). Take the '
+                'value as an argument',
+            '5: reads the clock',
+            '7: code that cannot be parsed as Dart (Expected an identifier.)',
+          ])
+            '1: import of "env.dart" reaches lib/models/env.dart:$finding '
+                '(lib/models/shipping_fee.dart → lib/models/env.dart)',
+        ],
+      );
+    });
+
+    test('forbiddenSource.defaults: false holds on the way as well', () {
+      expect(
+        reach(
+          "import 'env.dart';\n",
+          {'lib/models/env.dart': "const a = bool.hasEnvironment('A');\n"},
+          settings: {
+            'forbiddenSource': {'defaults': false},
+          },
+        ),
+        isEmpty,
+      );
+    });
+
+    test('a file that cannot be read: what it brings in cannot be '
+        'checked', () {
+      expect(
+        reach("import 'zone.dart';\nimport '../gone.dart';\n", {
+          'lib/models/zone.dart': "import 'missing.dart';\n",
+        }),
+        [
+          '1: import of "zone.dart" reaches lib/models/missing.dart, which '
+              'cannot be read, so what it brings in cannot be checked. When a generator writes that file, run it '
+              'before check (lib/models/shipping_fee.dart → lib/models/zone.dart → '
+              'lib/models/missing.dart)',
+          '2: import of "../gone.dart" reaches lib/gone.dart, which cannot be '
+              'read, so what it brings in cannot be checked. When a generator writes that file, run it '
+              'before check (lib/models/shipping_fee.dart → lib/gone.dart)',
+        ],
+      );
+    });
+
+    test('another package and the SDK are not followed: they are judged by '
+        'their names', () {
+      final read = <String>[];
+      expect(
+        reach(
+          "import 'dart:math';\nimport 'package:decimal/decimal.dart';\n"
+          "import 'zone.dart';\n",
+          {'lib/models/zone.dart': "import 'package:intl/intl.dart';\n"},
+          read: read,
+        ),
+        isEmpty,
+      );
+      expect(read, ['lib/models/zone.dart']);
+    });
+
+    test('an import that is a finding itself is not followed, in the gate '
+        'and on the way', () {
+      final read = <String>[];
+      const settings = {
+        'impureImports': {
+          'add': [
+            {'pattern': '_repository', 'reason': 'talks to the API'},
+          ],
+        },
+      };
+      expect(
+        reach(
+          "import 'fee_repository.dart';\nimport 'zone.dart';\n",
+          {'lib/models/zone.dart': "import 'zone_repository.dart';\n"},
+          settings: settings,
+          read: read,
+        ),
+        [
+          '1: import of "fee_repository.dart" (talks to the API)',
+          '2: import of "zone.dart" reaches lib/models/zone.dart:1: import '
+              'of "zone_repository.dart" (talks to the API) '
+              '(lib/models/shipping_fee.dart → lib/models/zone.dart)',
+        ],
+      );
+      expect(read, ['lib/models/zone.dart']);
+    });
+
+    test('settings.impureImports.allow: the URI is exempt, and is not '
+        'followed', () {
+      final read = <String>[];
+      const files = {
+        'lib/models/zone.dart':
+            "import 'package:flutter/foundation.dart';\n"
+            "import 'legacy/clock.dart';\n",
+        'lib/models/legacy/clock.dart': "import 'dart:io';\n",
+      };
+      expect(
+        reach(
+          "import 'zone.dart';\n",
+          files,
+          settings: {
+            'impureImports': {
+              'allow': [r'^package:flutter/foundation\.dart$', '^legacy/'],
+            },
+          },
+          read: read,
+        ),
+        isEmpty,
+      );
+      expect(read, ['lib/models/zone.dart']);
+      expect(reach("import 'zone.dart';\n", files), hasLength(2));
+    });
+
+    test('parts: a generated part is not read; a part of a file on the way '
+        'that no generator wrote is', () {
+      final read = <String>[];
+      expect(
+        reach("import 'zone.dart';\npart 'shipping_fee.g.dart';\n", {
+          'lib/models/zone.dart':
+              "part 'zone.g.dart';\npart 'zone.freezed.dart';\n"
+              "part 'zone_names.dart';\n",
+          'lib/models/zone_names.dart':
+              "part of 'zone.dart';\n"
+              "final home = Platform.environment['HOME'];\n",
+        }, read: read),
+        [
+          '1: import of "zone.dart" reaches lib/models/zone_names.dart:2: '
+              'reads Platform.environment (not a pure module). Take the '
+              'value as an argument (lib/models/shipping_fee.dart → '
+              'lib/models/zone.dart → lib/models/zone_names.dart)',
+        ],
+      );
+      expect(read, ['lib/models/zone.dart', 'lib/models/zone_names.dart']);
+    });
+
+    test('a part of the gate that no generator wrote is a finding of the '
+        'gate, and is not read', () {
+      final read = <String>[];
+      expect(
+        reach("part 'fee_rules.dart';\n", {
+          'lib/models/fee_rules.dart': "import 'dart:io';\n",
+        }, read: read),
+        [startsWith('1: part "fee_rules.dart" is code of the gate')],
+      );
+      expect(read, isEmpty);
+    });
+
+    test('every URI of a conditional import is followed', () {
+      expect(
+        reach(
+          "import 'clock_stub.dart'\n"
+          "    if (dart.library.io) 'clock_io.dart';\n",
+          {
+            'lib/models/clock_stub.dart': 'int now() => 0;\n',
+            'lib/models/clock_io.dart': "import 'zone.dart';\n",
+            'lib/models/zone.dart': "import 'dart:ffi';\n",
+          },
+        ),
+        [
+          '2: import of "clock_io.dart" reaches lib/models/zone.dart:1: '
+              'import of "dart:ffi" (file system / network / process '
+              'access) (lib/models/shipping_fee.dart → '
+              'lib/models/clock_io.dart → lib/models/zone.dart)',
+        ],
+      );
+    });
+
+    test('allowlist mode: the files on the way may import what the gate '
+        'may, and no file that could not be a gate', () {
+      expect(
+        reach(
+          "import 'zone.dart';\n",
+          {
+            'lib/models/zone.dart':
+                "import 'dart:convert';\n"
+                "import 'package:decimal/decimal.dart';\n"
+                "import 'package:intl/intl.dart';\n"
+                "import 'zone.g.dart';\n"
+                "import 'package:app/pages/zone_page.dart';\n",
+            'lib/models/zone.g.dart': '',
+            'lib/pages/zone_page.dart': '',
+          },
+          settings: {
+            'imports': {
+              'mode': 'allowlist',
+              'allow': ['package:decimal'],
+            },
+            'impurePaths': {
+              'add': [
+                {'pattern': '^lib/pages/', 'reason': 'UI'},
+              ],
+            },
+          },
+        ),
+        [
+          for (final finding in [
+            '3: import of "package:intl/intl.dart" is not in '
+                'settings.imports.allow (allowlist mode allows the '
+                'package\'s own files and listed libraries only)',
+            '4: import of "zone.g.dart" (generated file)',
+            '5: import of "package:app/pages/zone_page.dart" (UI)',
+          ])
+            '1: import of "zone.dart" reaches lib/models/zone.dart:$finding '
+                '(lib/models/shipping_fee.dart → lib/models/zone.dart)',
+        ],
+      );
+    });
+
+    test('settings.importAliases point into the package and are '
+        'followed', () {
+      expect(
+        reach(
+          "import 'shared:clock.dart';\n",
+          {'packages/shared/lib/clock.dart': "import 'dart:io';\n"},
+          settings: {
+            'importAliases': [
+              {'prefix': 'shared:', 'target': 'packages/shared/lib/'},
+            ],
+          },
+        ),
+        [
+          '1: import of "shared:clock.dart" reaches '
+              'packages/shared/lib/clock.dart:1: $io '
+              '(lib/models/shipping_fee.dart → packages/shared/lib/clock.dart)',
+        ],
+      );
+    });
+
+    test('findings of the gate and of what it reaches are sorted by the '
+        'line in the gate', () {
+      expect(
+        reach("import 'zone.dart';\nimport 'dart:io';\n", {
+          'lib/models/zone.dart': "import 'dart:io';\n",
+        }),
+        [startsWith('1: import of "zone.dart" reaches '), '2: $io'],
+      );
+    });
+
+    test('without a way to read files nothing is followed', () {
+      expect(scan("import 'zone.dart';\n"), isEmpty);
+    });
+  });
+
   group('a pure module passes', () {
     test('a model with json_serializable', () {
       expect(
@@ -415,10 +805,15 @@ int roll([Random? random]) => (random ?? Random()).nextInt(6);
       );
     });
 
-    test('add: a pattern per line, comments included', () {
+    test('add: a pattern per line of code; what a comment says is not '
+        'code', () {
       expect(
         scan(
-          'final a = DateTime.now();\n// DateTime.now()\nfinal b = 1;\n',
+          'final a = DateTime.now();\n// DateTime.now()\nfinal b = 1;\n'
+          '/// Uses [DateTime.now()] when no time is given.\n'
+          'final c = 2; // not DateTime.now()\n'
+          '/* DateTime.now()\n   final b */\n'
+          "final d = 'DateTime.now()'; /* x */ final e = DateTime.now();\n",
           settings: {
             'forbiddenSource': {
               'add': [
@@ -428,7 +823,9 @@ int roll([Random? random]) => (random ?? Random()).nextInt(6);
             },
           },
         ),
-        ['1: reads the clock', '2: reads the clock', '3: matches final b'],
+        // Line 8: the text of a string is code, and so is what follows a
+        // comment on the line.
+        ['1: reads the clock', '3: matches final b', '8: reads the clock'],
       );
     });
 
@@ -534,7 +931,9 @@ const text = '// $ignore-line';
   test('a URI that is not a plain string', () {
     expect(
       scan("import 'a\${x}.dart';\n"),
-      contains('1: a URI that is not a plain string cannot be checked'),
+      contains(
+        '1: a URI that is not written plainly cannot be checked (a plain string, a lower-case scheme, no "%", not file:)',
+      ),
     );
   });
 

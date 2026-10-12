@@ -19,6 +19,14 @@ void main() {
     expect(isFilled(null), isFalse);
   });
 
+  test('asText: a string, or null', () {
+    expect(asText('a'), 'a');
+    expect(asText(''), '');
+    expect(asText(1), isNull);
+    expect(asText(null), isNull);
+    expect(asText(['a']), isNull);
+  });
+
   test('asInteger: 1.0 is an integer, as for Number.isInteger', () {
     expect(asInteger(2), 2);
     expect(asInteger(0), 0);

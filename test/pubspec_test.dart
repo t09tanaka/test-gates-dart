@@ -13,6 +13,9 @@ void main() {
     expect(packageNameOf('name: "app"\n'), 'app');
     expect(packageNameOf('name:\tapp \t# the app\n'), 'app');
     expect(packageNameOf('name:app\n'), 'app');
+    expect(packageNameOf('name : app\n'), 'app');
+    expect(packageNameOf('"name": app\n'), 'app');
+    expect(packageNameOf("'name'\t:\t'app'\n"), 'app');
   });
 
   test('CRLF line ends and a byte order mark', () {
@@ -29,5 +32,8 @@ void main() {
     expect(packageNameOf('name: my-app\n'), isNull);
     expect(packageNameOf('name: app extra\n'), isNull);
     expect(packageNameOf('# name: app\n'), isNull);
+    expect(packageNameOf('names: app\n'), isNull);
+    expect(packageNameOf('"name: app\n'), isNull);
+    expect(packageNameOf('xname: app\n'), isNull);
   });
 }

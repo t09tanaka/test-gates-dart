@@ -49,6 +49,7 @@ class DartSource {
     required this.identifiers,
     required this.sharedBlockLines,
     required this.disabledTests,
+    required this.code,
   });
 
   /// Imports, exports and parts, in the order of the file. A conditional
@@ -58,7 +59,9 @@ class DartSource {
   /// Line of `part of`, when the file is a part of another library.
   final int? partOfLine;
 
-  /// Lines of a directive whose URI is not a plain string.
+  /// Lines of a directive whose URI cannot be judged by its text: it is
+  /// not a plain string, or it is written in a way that Dart reads as
+  /// another URI than the one that is written (see [_isPlainUri]).
   final List<int> uncheckableUris;
 
   /// Syntax errors: the file could not be read as Dart.
@@ -78,6 +81,12 @@ class DartSource {
   /// Skipped or focused tests: `skip:`, `solo:`, `@Skip`,
   /// `markTestSkipped()`.
   final List<SourceFinding> disabledTests;
+
+  /// The source with every comment (`//`, `///`, `/* */`) replaced by
+  /// blanks. Lines and columns are those of the source, so a pattern that is
+  /// tested against a line of it sees the code of that line and nothing a
+  /// comment says. A string literal is code and stays.
+  final String code;
 }
 
 const _environmentConstructors = {'fromEnvironment', 'hasEnvironment'};
@@ -109,7 +118,7 @@ DartSource parseDartSource(String source) {
   int? partOfLine;
   void add(DirectiveKind kind, StringLiteral uri, [List<String>? shown]) {
     final value = uri.stringValue;
-    if (value == null) {
+    if (value == null || !_isPlainUri(value)) {
       uncheckable.add(lineOf(uri.offset));
     } else {
       imports.add(
@@ -146,14 +155,29 @@ DartSource parseDartSource(String source) {
     }
   }
 
+  // The comments hang on the token that follows them; the ones at the end
+  // of the file on the token that ends it.
+  final code = StringBuffer();
+  var written = 0;
+  void blankComments(Token token) {
+    for (
+      Token? comment = token.precedingComments;
+      comment is Token;
+      comment = comment.next
+    ) {
+      code
+        ..write(content.substring(written, comment.offset))
+        ..write(comment.lexeme.replaceAll(RegExp(r'[^\r\n]'), ' '));
+      written = comment.end;
+    }
+  }
+
   final identifiers = <String>{};
   final environmentReads = <SourceFinding>[];
   final disabledTests = <SourceFinding>[];
-  for (
-    var token = unit.beginToken;
-    token.type != TokenType.EOF;
-    token = token.next!
-  ) {
+  var token = unit.beginToken;
+  for (; token.type != TokenType.EOF; token = token.next!) {
+    blankComments(token);
     final next = token.next!;
     // `@Skip(…)`, or `@prefix.Skip(…)` when the library is imported with a
     // prefix.
@@ -199,6 +223,9 @@ DartSource parseDartSource(String source) {
     }
   }
 
+  blankComments(token);
+  code.write(content.substring(written));
+
   final visitor = _Visitor(lineOf);
   unit.accept(visitor);
   final sharedBlockLines = [
@@ -218,6 +245,7 @@ DartSource parseDartSource(String source) {
     identifiers: identifiers,
     sharedBlockLines: sharedBlockLines,
     disabledTests: disabledTests,
+    code: code.toString(),
   );
 }
 
@@ -300,4 +328,18 @@ class _Visitor extends RecursiveAstVisitor<void> {
     _block(node.finallyBlock);
     super.visitTryStatement(node);
   }
+}
+
+final _scheme = RegExp(r'^[A-Za-z][A-Za-z0-9+.-]*:');
+
+/// True for a URI that is what it looks like. The rules for imports compare
+/// the text of the URI, and Dart does not: it reads `DART:io` as `dart:io`
+/// and `package:%68ttp/http.dart` as `package:http/http.dart`, and with
+/// `file:` any file of the machine can be named. Such a URI is not judged;
+/// it is reported.
+bool _isPlainUri(String uri) {
+  final scheme = _scheme.stringMatch(uri);
+  final plainScheme =
+      scheme == null || (scheme == scheme.toLowerCase() && scheme != 'file:');
+  return plainScheme && !uri.contains('%');
 }

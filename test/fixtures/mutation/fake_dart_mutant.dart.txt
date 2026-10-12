@@ -8,7 +8,7 @@
 // What it does is read from "fake.json" in the current directory (every key
 // is optional):
 //
-//   "version": "0.1.0"     what --version prints
+//   "version": "0.1.1"     what --version prints
 //   "versionExit": 0       the exit code of --version
 //   "report": { ... }      written to the path of --report; without it no
 //                          report is written
@@ -19,6 +19,8 @@
 //                          the signal to "signals.log", takes a second to
 //                          "put files back", writes "put-back" and exits
 //                          with 130 / 143 / 129
+//   "deaf": true           with "hang": the run notes the signal and does
+//                          not end
 //
 // A run appends its arguments to "runs.log", copies the plan it was given
 // to "plan.seen.json", and the report that was at --report before it wrote
@@ -37,7 +39,7 @@ Future<void> main(List<String> arguments) async {
       ? jsonDecode(file.readAsStringSync()) as Map<String, Object?>
       : const <String, Object?>{};
   if (arguments.contains('--version')) {
-    stdout.writeln(fake['version'] ?? '0.1.0');
+    stdout.writeln(fake['version'] ?? '0.1.1');
     exitCode = fake['versionExit'] as int? ?? 0;
     return;
   }
@@ -70,6 +72,9 @@ Future<void> main(List<String> arguments) async {
           return;
         }
         got = true;
+        if (fake['deaf'] == true) {
+          return;
+        }
         await Future<void>.delayed(const Duration(seconds: 1));
         File('put-back').writeAsStringSync('yes');
         exit(code);

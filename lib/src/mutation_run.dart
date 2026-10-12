@@ -12,18 +12,21 @@ const dartMutantInstall = 'dart pub global activate $dartMutant';
 
 /// The lowest version of the tool this version works with. Every later
 /// version with the same major and minor number is supported as well
-/// (0.1.0: every 0.1.x). The one place that says so; the messages and the
-/// check are made from it.
-const supportedDartMutant = (major: 0, minor: 1, patch: 0);
+/// (0.1.1: 0.1.1 and every later 0.1.x). The one place that says so; the
+/// messages and the check are made from it.
+///
+/// Not 0.1.0: an experimental option of that version could report a mutant
+/// as killed that survives.
+const supportedDartMutant = (major: 0, minor: 1, patch: 1);
 
 /// The supported versions as `dart pub global activate` takes them:
-/// `^0.1.0` for [supportedDartMutant] 0.1.0, which is 0.1.0 or later and
+/// `^0.1.1` for [supportedDartMutant] 0.1.1, which is 0.1.1 or later and
 /// below 0.2.0.
 String dartMutantConstraint([
   ({int major, int minor, int patch}) lowest = supportedDartMutant,
 ]) => '^${lowest.major}.${lowest.minor}.${lowest.patch}';
 
-/// The same in words: `0.1.0 or later, below 0.2.0`.
+/// The same in words: `0.1.1 or later, below 0.2.0`.
 String dartMutantRange([
   ({int major, int minor, int patch}) lowest = supportedDartMutant,
 ]) =>
@@ -42,6 +45,28 @@ List<List<String>> dartMutantCommands(String dart) => [
   const [dartMutant],
   [dart, 'pub', 'global', 'run', dartMutant],
 ];
+
+/// What one of the commands that were tried did, for the message that says
+/// that the tool was not found: [startError] when it could not be started,
+/// else its exit code and the first line it printed. A command that is
+/// there and answers with something else than a version is then told apart
+/// from one that is missing.
+String describeAttempt(
+  List<String> command, {
+  String? startError,
+  int? exitCode,
+  String output = '',
+}) {
+  final shown = '"${[...command, '--version'].join(' ')}"';
+  if (startError != null) {
+    return '$shown could not be started ($startError)';
+  }
+  final lines = output.split('\n').map((line) => line.trim());
+  final first = lines.firstWhere((line) => line.isNotEmpty, orElse: () => '');
+  final printed = first.length > 200 ? '${first.substring(0, 200)}…' : first;
+  return '$shown ended with exit code $exitCode and printed '
+      '${printed.isEmpty ? 'nothing' : '"$printed"'}';
+}
 
 final _version = RegExp(r'^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.+-]*)?$');
 

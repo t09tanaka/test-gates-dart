@@ -284,6 +284,27 @@ void main() {
         }
       });
 
+      test('$field: a key that an entry does not have is a problem of the '
+          'entry, and the entry is not used', () {
+        final manifest = parse(
+          withGate(field, [
+            {...allowance, 'occurence': 2},
+            {...allowance, 'note': 'x', 'Reason': 'y'},
+            allowance,
+          ]),
+        );
+        expect(manifest.violations.map((violation) => '$violation'), [
+          'test-gates.json: lib/a.dart: $field[0]: unknown key "occurence"',
+          'test-gates.json: lib/a.dart: $field[1]: unknown key "note"',
+          'test-gates.json: lib/a.dart: $field[1]: unknown key "Reason"',
+        ]);
+        final gate = manifest.gates.single;
+        expect(
+          [...gate.equivalentMutants, ...gate.expectedTimeouts].single.index,
+          2,
+        );
+      });
+
       test('$field: every problem of an entry is reported', () {
         final manifest = parse(
           withGate(field, [

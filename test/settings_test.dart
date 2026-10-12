@@ -662,6 +662,91 @@ void main() {
       expect(reasonFor('package:provider/provider.dart'), 'state management');
     });
 
+    test('what 0.2.0 added to the list, each with its reason', () {
+      const added = {
+        'package:go_router/go_router.dart': 'Flutter plugin or UI package',
+        'package:auto_route/auto_route.dart': 'Flutter plugin or UI package',
+        'package:cached_network_image/cached_network_image.dart':
+            'Flutter plugin or UI package',
+        'package:google_fonts/google_fonts.dart':
+            'Flutter plugin or UI package',
+        'package:connectivity_plus/connectivity_plus.dart':
+            'device or platform access',
+        'package:device_info_plus/device_info_plus.dart':
+            'device or platform access',
+        'package:package_info_plus/package_info_plus.dart':
+            'device or platform access',
+        'package:share_plus/share_plus.dart': 'device or platform access',
+        'package:battery_plus/battery_plus.dart': 'device or platform access',
+        'package:sensors_plus/sensors_plus.dart': 'device or platform access',
+        'package:network_info_plus/network_info_plus.dart':
+            'device or platform access',
+        'package:url_launcher/url_launcher.dart': 'device or platform access',
+        'package:permission_handler/permission_handler.dart':
+            'device or platform access',
+        'package:geolocator/geolocator.dart': 'device or platform access',
+        'package:image_picker/image_picker.dart': 'device or platform access',
+        'package:file_picker/file_picker.dart': 'device or platform access',
+        'package:local_auth/local_auth.dart': 'device or platform access',
+        'package:file/file.dart': 'file system / network / process access',
+        'package:process/process.dart':
+            'file system / network / process access',
+        'package:platform/platform.dart':
+            'file system / network / process access',
+        'package:socket_io_client/socket_io_client.dart': 'network client',
+        'package:mqtt_client/mqtt_client.dart': 'network client',
+        'package:get_storage/get_storage.dart': 'persistence',
+        'package:realm/realm.dart': 'persistence',
+        'package:floor/floor.dart': 'persistence',
+        'package:hydrated_bloc/hydrated_bloc.dart': 'state management',
+        'package:replay_bloc/replay_bloc.dart': 'state management',
+        'package:state_notifier/state_notifier.dart': 'state management',
+        'package:signals/signals.dart': 'state management',
+        'package:async_redux/async_redux.dart': 'state management',
+        'package:watch_it/watch_it.dart': 'state management',
+        'package:stacked/stacked.dart': 'state management',
+        'package:supabase/supabase.dart': 'external service SDK',
+        'package:appwrite/appwrite.dart': 'external service SDK',
+        'package:googleapis/googleapis.dart': 'external service SDK',
+        'package:google_sign_in/google_sign_in.dart': 'external service SDK',
+        'package:in_app_purchase/in_app_purchase.dart': 'external service SDK',
+        'package:realm_dart/realm.dart':
+            'the Dart-only package of one that is on this list',
+        'package:dart_appwrite/dart_appwrite.dart':
+            'the Dart-only package of one that is on this list',
+        'package:googleapis_auth/googleapis_auth.dart':
+            'the Dart-only package of one that is on this list',
+        'package:signals_core/signals_core.dart':
+            'the Dart-only package of one that is on this list',
+      };
+      expect({for (final uri in added.keys) uri: reasonFor(uri)}, added);
+    });
+
+    test('packages that compute and hold data are not on the list, also '
+        'when their name starts like one that is', () {
+      for (final name in [
+        'decimal',
+        'intl',
+        'collection',
+        'meta',
+        'json_annotation',
+        'equatable',
+        'freezed_annotation',
+        'path',
+        'characters',
+        'fixnum',
+        'quiver',
+        'tuple',
+        'processing',
+        'platforms',
+        'filesize',
+        'http_parser',
+        'realm_common',
+      ]) {
+        expect(reasonFor('package:$name/$name.dart'), isNull, reason: name);
+      }
+    });
+
     test('the reason of every rule', () {
       expect(
         {

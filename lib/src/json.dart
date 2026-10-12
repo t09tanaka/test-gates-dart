@@ -7,6 +7,9 @@ typedef JsonObject = Map<String, Object?>;
 /// The value as a JSON object, or `null` when it is anything else.
 JsonObject? asObject(Object? value) => value is JsonObject ? value : null;
 
+/// The value as a string, or `null` when it is anything else.
+String? asText(Object? value) => value is String ? value : null;
+
 /// True for a string that has something other than whitespace in it.
 bool isFilled(Object? value) => value is String && value.trim().isNotEmpty;
 
