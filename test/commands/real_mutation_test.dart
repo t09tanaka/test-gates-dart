@@ -179,6 +179,55 @@ void main() {
     expect(err[1], listed.first);
     expect(File('${dir.path}/$gate').readAsBytesSync(), source);
 
+    // The checks in one start: what `all` says and ends with is what the
+    // four commands say and end with, one after the other.
+    File('${dir.path}/test-gates.json').writeAsStringSync(
+      jsonEncode({
+        'gates': [
+          {
+            'path': gate,
+            'decides': 'd',
+            'impact': 'i',
+            'equivalentMutants': printed,
+          },
+        ],
+        'settings': {
+          'lcov': {'file': 'coverage/lcov.info'},
+          'gateCommand': [
+            Platform.resolvedExecutable,
+            'test',
+            '--coverage-path=coverage/lcov.info',
+            '--branch-coverage',
+          ],
+        },
+      }),
+    );
+    final separate = <String>[];
+    var separateCode = 0;
+    for (final command in ['check', 'test', 'timezones', 'mutation']) {
+      separateCode = await cli([command]);
+      separate.addAll([...out, ...err]);
+      if (separateCode != 0) {
+        break;
+      }
+    }
+    expect(separateCode, 0);
+    expect(await cli(['all']), 0);
+    expect(
+      [...out, ...err],
+      [...separate, 'test_gates all: OK (check, test, timezones, mutation)'],
+    );
+    // And without the last allowance, all stops where mutation stops.
+    File('${dir.path}/test-gates.json').writeAsStringSync(
+      File('${dir.path}/test-gates.json').readAsStringSync().replaceFirst(
+        jsonEncode(printed),
+        jsonEncode(printed.sublist(1)),
+      ),
+    );
+    expect(await cli(['all']), 1);
+    expect(err.last, 'test_gates all: stopped at "mutation" (exit code 1)');
+    manifest(printed);
+
     // A part of the run is written and not judged, and is no result.
     manifest(printed);
     expect(

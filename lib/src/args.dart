@@ -7,6 +7,7 @@ const commands = [
   'timezones',
   'mutation',
   'mutation-result',
+  'all',
 ];
 
 class ParsedArgs {
@@ -36,6 +37,9 @@ class ParsedArgs {
   /// `--selfcheck` (test): the run of the tests is also the negative
   /// control, with a probe in every gate.
   bool selfcheck = false;
+
+  /// `--no-mutation` (all): the mutation test is left out.
+  bool noMutation = false;
 
   /// `--not-evaluable` (mutation, mutation-result): the mutants that could
   /// not be evaluated are listed, not only counted.
@@ -69,6 +73,7 @@ const _optionsByCommand = {
   'timezones': ['--dir', '--all', '--zone'],
   'mutation': ['--dir', '--report', '--force', '--gate', '--not-evaluable'],
   'mutation-result': ['--dir', '--report', '--gate', '--not-evaluable'],
+  'all': ['--dir', '--selfcheck', '--force', '--no-mutation'],
 };
 
 /// The commands that take something after `--`: a command to run, or (for
@@ -135,6 +140,10 @@ int _consume(
       parsed.selfcheck = true;
       return index;
     }
+    if (name == '--no-mutation') {
+      parsed.noMutation = true;
+      return index;
+    }
     final mode = name == '--all' ? 'all' : 'first';
     if (parsed.mode != null && parsed.mode != mode) {
       throw UsageError('--all and --first cannot be combined');
@@ -187,3 +196,18 @@ ParsedArgs parseArgs(List<String> argv) {
   }
   return parsed;
 }
+
+/// The checks `all` runs, in this order, each as the command line it would
+/// have by itself (without the executable): `check`, `test`, `timezones`
+/// and `mutation`, in the package of [args].
+///
+/// `--selfcheck` is handed to `test` and `--force` to `mutation`;
+/// `--no-mutation` leaves `mutation` out. Each check then is the command of
+/// that name, with its own output and its own exit code.
+List<List<String>> stepsOfAll(ParsedArgs args) => [
+  ['check', '--dir', args.dir],
+  ['test', if (args.selfcheck) '--selfcheck', '--dir', args.dir],
+  ['timezones', '--dir', args.dir],
+  if (!args.noMutation)
+    ['mutation', if (args.force) '--force', '--dir', args.dir],
+];

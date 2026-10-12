@@ -239,6 +239,92 @@ void main() {
     );
   });
 
+  group('all', () {
+    test('its options: --dir, --selfcheck, --force, --no-mutation', () {
+      final plain = parseArgs(['all']);
+      expect(
+        (plain.command, plain.selfcheck, plain.force, plain.noMutation),
+        ('all', false, false, false),
+      );
+      final args = parseArgs([
+        'all',
+        '--no-mutation',
+        '--dir=app',
+        '--selfcheck',
+        '--force',
+      ]);
+      expect(
+        (args.dir, args.selfcheck, args.force, args.noMutation),
+        ('app', true, true, true),
+      );
+      expect(args.notEvaluable, isFalse);
+      expect(parseArgs(['test', '--selfcheck']).noMutation, isFalse);
+      for (final (arguments, message) in [
+        (['all', '--gate', 'x'], 'unknown argument for all: --gate'),
+        (['all', '--file', 'x'], 'unknown argument for all: --file'),
+        (['all', '--no-mutation=1'], '--no-mutation does not take a value'),
+        (
+          ['all', '--', 'dart', 'test'],
+          '"--" is only accepted by the test, selfcheck, timezones and '
+              'mutation commands',
+        ),
+        (
+          ['mutation', '--no-mutation'],
+          'unknown argument for mutation: --no-mutation',
+        ),
+      ]) {
+        expect(() => parseArgs(arguments), usageError(message));
+      }
+    });
+
+    test('stepsOfAll: check, test, timezones and mutation, each as its own '
+        'command line', () {
+      expect(stepsOfAll(parseArgs(['all'])), [
+        ['check', '--dir', '.'],
+        ['test', '--dir', '.'],
+        ['timezones', '--dir', '.'],
+        ['mutation', '--dir', '.'],
+      ]);
+    });
+
+    test('stepsOfAll: --selfcheck goes to test, --force to mutation, --dir '
+        'to all of them', () {
+      expect(
+        stepsOfAll(
+          parseArgs(['all', '--selfcheck', '--force', '--dir', 'app']),
+        ),
+        [
+          ['check', '--dir', 'app'],
+          ['test', '--selfcheck', '--dir', 'app'],
+          ['timezones', '--dir', 'app'],
+          ['mutation', '--force', '--dir', 'app'],
+        ],
+      );
+    });
+
+    test('stepsOfAll: --no-mutation leaves mutation out', () {
+      expect(stepsOfAll(parseArgs(['all', '--no-mutation', '--force'])), [
+        ['check', '--dir', '.'],
+        ['test', '--dir', '.'],
+        ['timezones', '--dir', '.'],
+      ]);
+    });
+
+    test('every step is a command line that is accepted', () {
+      for (final arguments in [
+        ['all'],
+        ['all', '--selfcheck', '--force', '--dir', 'a b'],
+        ['all', '--no-mutation', '--dir=--odd'],
+      ]) {
+        for (final step in stepsOfAll(parseArgs(arguments))) {
+          final parsed = parseArgs(step);
+          expect(parsed.command, step.first);
+          expect(parsed.dir, parseArgs(arguments).dir);
+        }
+      }
+    });
+  });
+
   test('mutation-result takes --dir and --report', () {
     final args = parseArgs(['mutation-result', '--report=r.json']);
     expect((args.command, args.report), ('mutation-result', 'r.json'));

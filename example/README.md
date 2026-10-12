@@ -23,4 +23,6 @@ Things to try:
 - Add `import 'dart:io';` to [`lib/shipping_fee.dart`](lib/shipping_fee.dart). `check` rejects it: a gate is a pure module.
 - Remove both `equivalentMutants` from `test-gates.json`. `mutation` fails with the two mutants that no test can notice (`>` → `>=` where the fee is limited to the maximum, and `50` → `51` where the discount is rounded), and prints the entries to put back.
 
+All of them in one start: `dart run test_gates all`. [`tool/test_gates.dart`](tool/test_gates.dart) is the entry point for compiling the tool into an executable (`dart compile exe tool/test_gates.dart -o build/test_gates`), which starts faster still; the README of the package says when that is worth it.
+
 In a package of your own, `test_gates` is a development dependency from pub.dev (`dart pub add --dev test_gates`), not a path.

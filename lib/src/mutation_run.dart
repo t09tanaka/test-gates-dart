@@ -41,10 +41,23 @@ const planFile = '.dart_tool/test_gates/mutation-plan.json';
 /// executable on PATH, then the globally activated package through [dart]
 /// (the `dart` that runs this program). The first that answers `--version`
 /// is the one that is used.
-List<List<String>> dartMutantCommands(String dart) => [
+///
+/// [executable] is what runs this program. That is `dart` unless the
+/// program was compiled into an executable of its own; then the `dart` on
+/// PATH is used.
+List<List<String>> dartMutantCommands(String executable) => [
   const [dartMutant],
-  [dart, 'pub', 'global', 'run', dartMutant],
+  [
+    _dartName.hasMatch(executable) ? executable : 'dart',
+    'pub',
+    'global',
+    'run',
+    dartMutant,
+  ],
 ];
+
+/// `dart` or `dart.exe`, alone or at the end of a path.
+final _dartName = RegExp(r'(^|[/\\])dart(\.exe)?$');
 
 /// What one of the commands that were tried did, for the message that says
 /// that the tool was not found: [startError] when it could not be started,
