@@ -139,4 +139,47 @@ Future<void> main(List<String> arguments) async {
     expect(package.read('signals.log').trim(), '${ProcessSignal.sighup}');
     expect(alive(tool), isFalse, reason: 'the tool is still there');
   });
+
+  test('a launcher that ends before the tool behind it, and a signal right '
+      'after: the tool is still waited for', () async {
+    // The other tests send the signal to the command, which hands it on.
+    // Here the launcher is gone when the signal comes, as it can be after
+    // Ctrl-C in a terminal, and the tool has the signal by itself.
+    package.write('fake.json', jsonEncode({'launcher': true}));
+    package.write('wait_for_tool.dart', '''
+import 'dart:io';
+
+import 'package:test_gates/src/commands/mutation.dart';
+import 'package:test_gates/src/commands/output.dart';
+
+Future<void> main(List<String> arguments) async {
+  exitCode = await runMutation(
+    '.',
+    null,
+    const [],
+    Io(out: stdout.writeln, err: stderr.writeln),
+    candidates: [arguments],
+  );
+  // What was there when the command returned.
+  File('returned').writeAsStringSync(
+    File('put-back').existsSync() ? 'after the tool' : 'before the tool',
+  );
+}
+''');
+    final process = await Process.start(Platform.resolvedExecutable, [
+      '--packages=${File('.dart_tool/package_config.json').absolute.path}',
+      'wait_for_tool.dart',
+      Platform.resolvedExecutable,
+      '${package.dir.path}/fake_dart_mutant.dart',
+    ], workingDirectory: package.dir.path);
+    final stderrText = process.stderr.transform(systemEncoding.decoder).join();
+    unawaited(process.stdout.drain<void>());
+
+    expect(await process.exitCode, 143);
+    expect(
+      await stderrText,
+      contains('test_gates mutation: interrupted. Nothing was judged'),
+    );
+    expect(package.read('returned'), 'after the tool');
+  });
 }

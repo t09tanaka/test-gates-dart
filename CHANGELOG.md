@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0 (not yet published)
+## 0.2.0 (2026-10-12)
 
 `test_gates mutation` no longer makes the mutants and runs the tests itself.
 It starts [`dart_mutant`](https://pub.dev/packages/dart_mutant) for that, as
