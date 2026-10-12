@@ -3,6 +3,7 @@ import 'dart:io';
 import '../args.dart';
 import '../dart_source.dart';
 import '../gate_path.dart';
+import '../import_policy.dart';
 import '../io/files.dart';
 import '../io/process.dart';
 import '../pubspec.dart';
@@ -12,8 +13,23 @@ import '../types.dart';
 import '../zones.dart';
 import 'output.dart';
 
-/// Where macOS and Linux keep the time zone database.
-const zoneDatabase = '/usr/share/zoneinfo';
+/// True when [file] is an entry of the time zone database, see
+/// [isZoneData].
+bool _isZone(File file) {
+  if (!FileSystemEntity.isFileSync(file.path)) {
+    return false;
+  }
+  try {
+    final handle = file.openSync();
+    try {
+      return isZoneData(handle.readSync(4));
+    } finally {
+      handle.closeSync();
+    }
+  } on FileSystemException {
+    return false;
+  }
+}
 
 String _inPackage(String dir, String relativePath) =>
     '$dir${Platform.pathSeparator}'
@@ -30,7 +46,8 @@ String _inPackage(String dir, String relativePath) =>
 /// replaces the command that runs test files.
 ///
 /// [database] is where the time zone database is. It is a parameter for
-/// the tests of this package only.
+/// the tests of this package only; the command line uses
+/// [zoneDatabaseFor].
 ///
 /// Returns the exit code: 0 when the tests pass in every zone, 1 otherwise,
 /// 130 / 143 / 129 when interrupted.
@@ -40,8 +57,14 @@ Future<int> runTimezones(
   List<String> commandOverride,
   Io io, {
   bool all = false,
-  String database = zoneDatabase,
+  String? database,
 }) async {
+  final zoneinfo =
+      database ??
+      zoneDatabaseFor(
+        linux: Platform.isLinux,
+        tzdir: Platform.environment['TZDIR'],
+      );
   final manifest = readManifest(dir);
   final (:zones, :problem) = zonesFor(requested);
   if (zones == null) {
@@ -100,18 +123,42 @@ Future<int> runTimezones(
       );
       continue;
     }
-    final texts = [
-      ...gateSources(
-        path,
-        source,
-        manifest.settings,
-        packageName: packageName,
-        readSource: read,
-      ).values,
-      for (final test in tests) read(test) ?? '',
-    ];
+    // The gate, its tests, and the files of the package they reach: a test
+    // can get its dates from a helper.
+    final texts = <String, String>{
+      for (final start in [path, ...tests])
+        ...gateSources(
+          start,
+          start == path ? source : read(start) ?? '',
+          manifest.settings,
+          packageName: packageName,
+          readSource: read,
+        ),
+    };
+    final parsed = {
+      for (final MapEntry(key: file, value: text) in texts.entries)
+        file: parseDartSource(text),
+    };
+    // Without the name of the package, `package:` may be the package.
+    final unfollowed =
+        packageName == null &&
+        parsed.entries.any(
+          (entry) => entry.value.imports.any(
+            (imported) =>
+                imported.uri.startsWith('package:') &&
+                resolveUri(
+                      imported.uri,
+                      entry.key,
+                      manifest.settings.importAliases,
+                    ) ==
+                    null,
+          ),
+        );
     if (all ||
-        usesDateTime(texts.map((text) => parseDartSource(text).identifiers))) {
+        usesDateTime(
+          parsed.values.map((source) => source.identifiers),
+          unfollowed: unfollowed,
+        )) {
       chosen++;
       specs.addAll(tests.where((test) => !specs.contains(test)));
     } else {
@@ -126,6 +173,22 @@ Future<int> runTimezones(
     printViolations(io, 'timezones', violations);
     return 1;
   }
+  // Also when there is nothing to run: a zone that is misspelt today is
+  // still misspelt when a gate names DateTime.
+  final usable = !Platform.isWindows && Directory(zoneinfo).existsSync();
+  final unknown = [
+    if (usable)
+      for (final zone in zones)
+        if (!_isZone(File(zoneFile(zoneinfo, zone.name)))) zone.name,
+  ];
+  if (unknown.isNotEmpty) {
+    io.err(
+      '$executable timezones: ${unknown.join(', ')}: not a zone of the time '
+      'zone database of this machine ($zoneinfo). A process that is started '
+      'with an unknown zone runs in UTC without saying so',
+    );
+    return 1;
+  }
   if (specs.isEmpty) {
     io.out(
       '$executable timezones: OK (no gate names DateTime, so no test was '
@@ -134,23 +197,11 @@ Future<int> runTimezones(
     return 0;
   }
 
-  if (Platform.isWindows || !Directory(database).existsSync()) {
+  if (!usable) {
     io.err(
       '$executable timezones: cannot run the tests in another time zone '
       'here. It is done with the TZ environment variable and the time zone '
-      'database in $database, as macOS and Linux have them',
-    );
-    return 1;
-  }
-  final unknown = [
-    for (final zone in zones)
-      if (!File(zoneFile(database, zone.name)).existsSync()) zone.name,
-  ];
-  if (unknown.isNotEmpty) {
-    io.err(
-      '$executable timezones: ${unknown.join(', ')}: not in the time zone '
-      'database of this machine ($database). A process that is started '
-      'with an unknown zone runs in UTC without saying so',
+      'database in $zoneinfo, as macOS and Linux have them',
     );
     return 1;
   }

@@ -92,14 +92,17 @@ gates in other time zones. The README has the steps under "Upgrading from
   hour does not pass because of where the machine is. By default in the two
   ends of the clocks, `Pacific/Kiritimati` (UTC+14) and `Etc/GMT+12`
   (UTC-12): at every moment the date in one of them is another one than in
-  UTC. Only gates that name `DateTime` (in the gate, in a file it reaches or
-  in its test) are run; when none does, no test is started.
+  UTC. Only gates that name `DateTime` (in the gate, in its test, or in a
+  file of the package the two reach) are run; when none does, no test is
+  started. A zone that is not an entry of the time zone database of the
+  machine is refused.
 - `mutation --not-evaluable` and `mutation-result --not-evaluable` list the
   mutants that could not be evaluated, with the message of the compiler when
   the report has it. Without the option they are counted, as before.
 - `check` says in a note when there is no `pubspec.yaml` and a gate has
-  `package:` imports: without the name of the package they are taken for
-  imports of another package, and are not followed.
+  `package:` imports, or reaches a file that has: without the name of the
+  package they are taken for imports of another package, and are not
+  followed.
 
 ### Changed
 

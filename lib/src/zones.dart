@@ -7,10 +7,12 @@ typedef Zone = ({String name, String label});
 /// The two ends of the world's clocks. At every moment the calendar date of
 /// at least one of them is another one than the date in UTC: fourteen hours
 /// ahead it is tomorrow from 10:00 UTC on, twelve hours behind it is
-/// yesterday until 12:00 UTC. A test whose result depends on which day, month
-/// or year a moment falls in therefore fails in one of the two, whatever
-/// moment it uses and whatever zone it was written in. The zone of the
-/// machine itself is the one every other run of the tests uses.
+/// yesterday until 12:00 UTC. A test that reads the day of a moment
+/// therefore fails in one of the two, whatever moment it uses. A month or a
+/// year only changes with the day near its end, and an hour of the day or a
+/// day of the week can come out the same in both: those need a moment near
+/// the boundary, or a zone of their own (`--zone`). The zone of the machine
+/// itself is the one every other run of the tests uses.
 const defaultZones = <Zone>[
   (name: 'Pacific/Kiritimati', label: 'UTC+14'),
   (name: 'Etc/GMT+12', label: 'UTC-12'),
@@ -52,6 +54,25 @@ final _zoneName = RegExp(r'^[A-Za-z][A-Za-z0-9_+-]*(/[A-Za-z0-9_+-]+)*$');
 /// in UTC without saying so.
 String zoneFile(String database, String zone) => '$database/$zone';
 
+/// True when a file that starts with the bytes [head] is an entry of the
+/// time zone database: those start with `TZif`. The database also has files
+/// that are no zones (a table of leap seconds, lists of names), and a
+/// process that is started with one of those as its zone runs in UTC.
+bool isZoneData(List<int> head) =>
+    head.length >= 4 &&
+    head[0] == 0x54 &&
+    head[1] == 0x5A &&
+    head[2] == 0x69 &&
+    head[3] == 0x66;
+
+/// Where the time zone database is that a process started here uses.
+/// [tzdir] is the `TZDIR` environment variable, which says so on Linux;
+/// macOS does not read it.
+String zoneDatabaseFor({required bool linux, String? tzdir}) =>
+    linux && tzdir is String && tzdir.isNotEmpty
+    ? tzdir
+    : '/usr/share/zoneinfo';
+
 final _flutterSdk = RegExp(r'^\s+sdk:\s*flutter\s*(#.*)?$', multiLine: true);
 
 /// The command that runs test files, program first: [override] when given,
@@ -68,9 +89,16 @@ List<String> zoneTestCommand(String? pubspec, List<String> override) =>
     : const ['dart', 'test'];
 
 /// True when one of the files a gate is made of and tested with names
-/// `DateTime` ([identifiers]: the identifiers of the gate, of every file of
-/// the package it reaches, and of its test). Only such a gate can decide
+/// `DateTime` ([identifiers]: the identifiers of the gate, of its test, and
+/// of every file of the package the two reach). Only such a gate can decide
 /// something by the time zone: a local date or time is a `DateTime`, and
 /// who makes or reads one names the class, or reaches a file that does.
-bool usesDateTime(Iterable<Set<String>> identifiers) =>
-    identifiers.any((names) => names.contains('DateTime'));
+///
+/// With [unfollowed] the answer is yes whatever the files name: an import
+/// of the gate or of its test could not be followed (there is no pubspec
+/// that names the package, so `package:` could be the package itself), and
+/// what is behind it is not known.
+bool usesDateTime(
+  Iterable<Set<String>> identifiers, {
+  bool unfollowed = false,
+}) => unfollowed || identifiers.any((names) => names.contains('DateTime'));

@@ -150,9 +150,21 @@ void main() {
     expect(
       err.single,
       startsWith(
-        'test_gates timezones: Nowhere/No_Such_Zone: not in the time zone '
-        'database of this machine (/usr/share/zoneinfo).',
+        'test_gates timezones: Nowhere/No_Such_Zone: not a zone of the time '
+        'zone database of this machine (',
       ),
     );
+  });
+
+  test('the zones of the database of this machine are zones: the built-in '
+      'two and UTC start as its entries do', () {
+    final database = zoneDatabaseFor(
+      linux: Platform.isLinux,
+      tzdir: Platform.environment['TZDIR'],
+    );
+    for (final zone in [...defaultZones.map((zone) => zone.name), 'UTC']) {
+      final head = File(zoneFile(database, zone)).readAsBytesSync().take(4);
+      expect(isZoneData(head.toList()), isTrue, reason: zone);
+    }
   });
 }

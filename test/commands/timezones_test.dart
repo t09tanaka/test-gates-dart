@@ -19,8 +19,10 @@ void main() {
     ).copySync('${package.dir.path}/fake_zone_test.dart');
     // The time zone database of the tests: these zones are known.
     for (final zone in ['Pacific/Kiritimati', 'Etc/GMT+12', 'UTC']) {
-      package.write('zoneinfo/$zone', '');
+      package.write('zoneinfo/$zone', 'TZif2');
     }
+    // In the database, and no zone.
+    package.write('zoneinfo/leapseconds', '# Leap seconds\n');
     package.write(
       'lib/due.dart',
       'bool isDue(DateTime now, DateTime due) => now.isAfter(due);\n',
@@ -98,6 +100,40 @@ void main() {
         '  ✓ TZ=UTC: the tests pass',
         '  ✓ TZ=Etc/GMT+12 (UTC-12): the tests pass',
       ]);
+    });
+
+    test('DateTime in a file that only the test of a gate imports '
+        'counts', () async {
+      package.write('pubspec.yaml', 'name: app\n');
+      package.write('lib/a.dart', 'int a(dynamic clock) => clock.day;\n');
+      package.write(
+        'test/a_test.dart',
+        "import 'helpers/dates.dart';\nimport 'package:app/a.dart';\n",
+      );
+      package.write('test/helpers/dates.dart', "export 'moments.dart';\n");
+      package.write(
+        'test/helpers/moments.dart',
+        'final late = DateTime.utc(2026, 1, 31, 23, 30);\n',
+      );
+      package.manifest(['lib/a.dart', 'lib/fee.dart']);
+      expect(await timezones(), 0);
+      expect(runs().first, 'TZ=Pacific/Kiritimati test/a_test.dart');
+    });
+
+    test('no pubspec.yaml: a gate with a "package:" import that cannot be '
+        'followed is run, because what is behind it is not known', () async {
+      package.write('lib/a.dart', "import 'package:app/src/dates.dart';\n");
+      package.write('lib/a_test.dart', '');
+      package.write('lib/b.dart', "import 'mid.dart';\n");
+      package.write('lib/b_test.dart', '');
+      package.write('lib/mid.dart', "import 'package:app/src/dates.dart';\n");
+      package.write('lib/src/dates.dart', 'DateTime? at;\n');
+      package.manifest(['lib/a.dart', 'lib/b.dart', 'lib/fee.dart']);
+      expect(await timezones(), 0);
+      expect(
+        runs().first,
+        'TZ=Pacific/Kiritimati lib/a_test.dart lib/b_test.dart',
+      );
     });
 
     test('no gate names DateTime: nothing is run', () async {
@@ -182,11 +218,31 @@ void main() {
       expect(await timezones(zones: ['UTC', 'Mars/Olympus', 'Etc/GMT+1']), 1);
       expect(runs(), isEmpty);
       expect(package.err, [
-        'test_gates timezones: Mars/Olympus, Etc/GMT+1: not in the time '
-            'zone database of this machine (${package.dir.path}/zoneinfo). '
-            'A process that is started with an unknown zone runs in UTC '
-            'without saying so',
+        'test_gates timezones: Mars/Olympus, Etc/GMT+1: not a zone of the '
+            'time zone database of this machine '
+            '(${package.dir.path}/zoneinfo). A process that is started with '
+            'an unknown zone runs in UTC without saying so',
       ]);
+    });
+
+    test('a file of the database that is no zone, and a directory of it, '
+        'are refused', () async {
+      expect(await timezones(zones: ['leapseconds', 'Pacific', 'UTC']), 1);
+      expect(runs(), isEmpty);
+      expect(
+        package.err.single,
+        startsWith('test_gates timezones: leapseconds, Pacific: not a zone '),
+      );
+    });
+
+    test('a zone that is not known is refused also when there is nothing '
+        'to run', () async {
+      package.manifest(['lib/fee.dart']);
+      expect(await timezones(zones: ['Mars/Olympus']), 1);
+      expect(
+        package.err.single,
+        startsWith('test_gates timezones: Mars/Olympus: not a zone '),
+      );
     });
 
     test('no time zone database: nothing is run', () async {

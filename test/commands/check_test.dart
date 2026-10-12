@@ -343,8 +343,9 @@ void f() => print(home);
       expect(check(), 1);
       expect(out, [
         'test_gates check: note: no pubspec.yaml here, so the "package:" '
-            'imports of lib/a.dart were not followed: without the name of '
-            'the package, each is taken for an import of another package',
+            'imports of lib/a.dart (and of the files they reach) were not '
+            'followed: without the name of the package, each is taken for '
+            'an import of another package',
       ]);
       expect(err, [
         'test_gates check: 1 violation(s)',
@@ -352,6 +353,13 @@ void f() => print(home);
           '  - lib/b.dart:1: import of "c.dart" reaches lib/c.dart:1: ',
         ),
       ]);
+      // A "package:" import one file away is noted for the gate as well.
+      out.clear();
+      err.clear();
+      write('shared/lib/d.dart', "import 'package:app/c.dart';\n");
+      expect(check(), 1);
+      expect(out.single, contains('imports of lib/a.dart, lib/b.dart (and '));
+      write('shared/lib/d.dart', '');
       // With the pubspec the import is followed, and nothing is noted.
       out.clear();
       err.clear();

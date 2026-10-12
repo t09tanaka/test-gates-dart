@@ -98,6 +98,45 @@ void main() {
     );
   });
 
+  group('isZoneData', () {
+    test('an entry of the database starts with TZif', () {
+      expect(isZoneData('TZif'.codeUnits), isTrue);
+      expect(isZoneData('TZif2 and more'.codeUnits), isTrue);
+    });
+
+    test('anything else is no zone: a text file, a short file, a file that '
+        'differs in one byte', () {
+      for (final head in [
+        '',
+        'TZi',
+        '# Le',
+        'tZif',
+        'TzIf',
+        'TZIf',
+        'TZiF',
+        'xTZif',
+      ]) {
+        expect(isZoneData(head.codeUnits), isFalse, reason: head);
+      }
+    });
+  });
+
+  group('zoneDatabaseFor', () {
+    test('/usr/share/zoneinfo, and on Linux what TZDIR says', () {
+      expect(zoneDatabaseFor(linux: true), '/usr/share/zoneinfo');
+      expect(zoneDatabaseFor(linux: true, tzdir: ''), '/usr/share/zoneinfo');
+      expect(
+        zoneDatabaseFor(linux: true, tzdir: '/etc/zoneinfo'),
+        '/etc/zoneinfo',
+      );
+      expect(zoneDatabaseFor(linux: false), '/usr/share/zoneinfo');
+      expect(
+        zoneDatabaseFor(linux: false, tzdir: '/etc/zoneinfo'),
+        '/usr/share/zoneinfo',
+      );
+    });
+  });
+
   group('zoneTestCommand', () {
     const flutter = 'name: app\ndependencies:\n  flutter:\n    sdk: flutter\n';
     const plain = 'name: app\ndev_dependencies:\n  test: ^1.27.0\n';
@@ -163,6 +202,22 @@ void main() {
           {'DateTime'},
         ]),
         isTrue,
+      );
+    });
+
+    test('an import that could not be followed: yes, whatever is named', () {
+      expect(usesDateTime([], unfollowed: true), isTrue);
+      expect(
+        usesDateTime([
+          {'int'},
+        ], unfollowed: true),
+        isTrue,
+      );
+      expect(
+        usesDateTime([
+          {'int'},
+        ], unfollowed: false),
+        isFalse,
       );
     });
 

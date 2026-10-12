@@ -121,11 +121,15 @@ List<Violation> checkGates(
         readSource: readSource,
       ),
     );
+    // The gate and the files it reaches without `package:`.
     if (pubspec == null &&
-        parseDartSource(source).imports.any(
-          (imported) =>
-              imported.uri.startsWith('package:') &&
-              resolveUri(imported.uri, path, settings.importAliases) == null,
+        gateSources(path, source, settings, readSource: readSource).entries.any(
+          (entry) => parseDartSource(entry.value).imports.any(
+            (imported) =>
+                imported.uri.startsWith('package:') &&
+                resolveUri(imported.uri, entry.key, settings.importAliases) ==
+                    null,
+          ),
         )) {
       notFollowed?.add(path);
     }
@@ -196,8 +200,9 @@ int runCheck(String dir, Io io) {
     // use the checks. But what was not looked at is said.
     io.out(
       '$executable check: note: no pubspec.yaml here, so the "package:" '
-      'imports of ${notFollowed.join(', ')} were not followed: without the '
-      'name of the package, each is taken for an import of another package',
+      'imports of ${notFollowed.join(', ')} (and of the files they reach) '
+      'were not followed: without the name of the package, each is taken '
+      'for an import of another package',
     );
   }
   if (violations.isNotEmpty) {
