@@ -144,7 +144,7 @@ void main() {
         await mutation(
           force: true,
           report: 'out/m.json',
-          rest: ['--jobs', '3', '--schemata', '--', 'fvm', 'flutter', 'test'],
+          rest: ['--jobs', '3', '--', 'fvm', 'flutter', 'test'],
         ),
         0,
       );
@@ -152,7 +152,7 @@ void main() {
         'run --dir ${root()} '
             '--plan ${root()}/.dart_tool/test_gates/mutation-plan.json '
             '--report ${root()}/out/m.json --force '
-            '--jobs 3 --schemata -- fvm flutter test',
+            '--jobs 3 -- fvm flutter test',
       ]);
       expect(package.file(reportFile).existsSync(), isFalse);
     });
@@ -416,7 +416,7 @@ void main() {
         expect(package.err, [
           'test_gates mutation: dart_mutant $version '
               '("${fake.join(' ')}") is not a version this test_gates works '
-              'with (0.1.x). Install one that is:',
+              'with (0.1.0 or later, below 0.2.0). Install one that is:',
           "  dart pub global activate dart_mutant '^0.1.0'",
         ]);
         expect(runs(), isEmpty);

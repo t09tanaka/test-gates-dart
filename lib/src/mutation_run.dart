@@ -10,13 +10,25 @@ const dartMutant = 'dart_mutant';
 /// How the tool is installed, for the message that says it is missing.
 const dartMutantInstall = 'dart pub global activate $dartMutant';
 
-/// The versions of the tool this version works with: every `0.1.x`. The one
-/// place that says so; the messages and the check are made from it.
-const supportedDartMutant = (major: 0, minor: 1);
+/// The lowest version of the tool this version works with. Every later
+/// version with the same major and minor number is supported as well
+/// (0.1.0: every 0.1.x). The one place that says so; the messages and the
+/// check are made from it.
+const supportedDartMutant = (major: 0, minor: 1, patch: 0);
 
-/// [supportedDartMutant] as it is shown: `0.1.x`.
-String get supportedDartMutantRange =>
-    '${supportedDartMutant.major}.${supportedDartMutant.minor}.x';
+/// The supported versions as `dart pub global activate` takes them:
+/// `^0.1.0` for [supportedDartMutant] 0.1.0, which is 0.1.0 or later and
+/// below 0.2.0.
+String dartMutantConstraint([
+  ({int major, int minor, int patch}) lowest = supportedDartMutant,
+]) => '^${lowest.major}.${lowest.minor}.${lowest.patch}';
+
+/// The same in words: `0.1.0 or later, below 0.2.0`.
+String dartMutantRange([
+  ({int major, int minor, int patch}) lowest = supportedDartMutant,
+]) =>
+    '${lowest.major}.${lowest.minor}.${lowest.patch} or later, below '
+    '${lowest.major}.${lowest.minor + 1}.0';
 
 /// Where the plan for the tool is written, below the package. `.dart_tool`
 /// is ignored by git in every Dart project.
@@ -42,12 +54,17 @@ String? dartMutantVersionOf(int? exitCode, String output) {
   return exitCode == 0 && _version.hasMatch(text) ? text : null;
 }
 
-/// True when [version] (as [dartMutantVersionOf] gives it) is one of
-/// [supportedDartMutant].
-bool isSupportedDartMutant(String version) {
+/// True when [version] (as [dartMutantVersionOf] gives it) is supported:
+/// the major and minor number of [lowest], and its patch number or a later
+/// one.
+bool isSupportedDartMutant(
+  String version, [
+  ({int major, int minor, int patch}) lowest = supportedDartMutant,
+]) {
   final match = _version.firstMatch(version)!;
-  return int.parse(match[1]!) == supportedDartMutant.major &&
-      int.parse(match[2]!) == supportedDartMutant.minor;
+  return int.parse(match[1]!) == lowest.major &&
+      int.parse(match[2]!) == lowest.minor &&
+      int.parse(match[3]!) >= lowest.patch;
 }
 
 /// The options of `dart_mutant run` that `mutation` sets by itself, with the

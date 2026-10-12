@@ -67,9 +67,27 @@ void main() {
   });
 
   group('the supported versions', () {
-    test('are 0.1.x, said in one place', () {
-      expect(supportedDartMutant, (major: 0, minor: 1));
-      expect(supportedDartMutantRange, '0.1.x');
+    test('are 0.1.0 and every later 0.1.x, said in one place', () {
+      expect(supportedDartMutant, (major: 0, minor: 1, patch: 0));
+      expect(dartMutantConstraint(), '^0.1.0');
+      expect(dartMutantRange(), '0.1.0 or later, below 0.2.0');
+    });
+
+    test('a higher lowest version: one constant decides the check and both '
+        'texts', () {
+      const lowest = (major: 0, minor: 1, patch: 1);
+      expect(isSupportedDartMutant('0.1.0', lowest), isFalse);
+      expect(isSupportedDartMutant('0.1.1', lowest), isTrue);
+      expect(isSupportedDartMutant('0.1.2', lowest), isTrue);
+      expect(isSupportedDartMutant('0.2.1', lowest), isFalse);
+      expect(isSupportedDartMutant('1.1.1', lowest), isFalse);
+      expect(dartMutantConstraint(lowest), '^0.1.1');
+      expect(dartMutantRange(lowest), '0.1.1 or later, below 0.2.0');
+      const other = (major: 2, minor: 9, patch: 3);
+      expect(isSupportedDartMutant('2.9.3', other), isTrue);
+      expect(isSupportedDartMutant('2.9.2', other), isFalse);
+      expect(dartMutantConstraint(other), '^2.9.3');
+      expect(dartMutantRange(other), '2.9.3 or later, below 2.10.0');
     });
 
     test('every patch of it, with or without a suffix', () {
@@ -89,8 +107,8 @@ void main() {
     test('options of the tool are handed on', () {
       for (final rest in [
         ['--jobs', '3'],
-        ['--shard=1/4', '--schemata'],
-        ['--html', 'report.html', '--no-schemata'],
+        ['--shard=1/4', '--jobs=2'],
+        ['--html', 'report.html'],
         ['--force'],
         ['--jobs', '2', '--', 'fvm', 'flutter', 'test', '--no-pub'],
         ['--', 'dart', 'test'],
@@ -161,7 +179,7 @@ void main() {
 
     test('nothing else', () {
       expect(asksForPart([]), isFalse);
-      expect(asksForPart(['--jobs', '2', '--schemata']), isFalse);
+      expect(asksForPart(['--jobs', '2', '--html', 'm.html']), isFalse);
       expect(asksForPart(['--shards', '1/4']), isFalse);
       // Behind the second "--" it is an argument of the test command.
       expect(asksForPart(['--', 'dart', 'test', '--shard', '1/4']), isFalse);

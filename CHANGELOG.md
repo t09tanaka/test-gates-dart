@@ -15,8 +15,7 @@ steps under "Upgrading from 0.1".
   the exit code is 2 and nothing is run. The other commands run on Dart 3.9
   as before.
 - What follows `--` on the command line of `mutation` is handed to
-  `dart_mutant run` (`--jobs <n>`, `--shard <i>/<n>`, `--schemata`,
-  `--html <file>`). It used to be the command that runs test files; that
+  `dart_mutant run` (`--jobs <n>`, `--shard <i>/<n>`, `--html <file>`). It used to be the command that runs test files; that
   command now goes behind a second `--` (`mutation -- -- fvm flutter test
   --no-pub`), and the old form is refused with exit code 2. `--dir`, `--plan`,
   `--report` and `--only` are refused behind `--`: `mutation` sets them.

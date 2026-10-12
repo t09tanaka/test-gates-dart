@@ -101,12 +101,9 @@ Future<int> runMutation(
     io.err(
       '$executable mutation: $dartMutant ${found.version} '
       '("${found.command.join(' ')}") is not a version this $executable '
-      'works with ($supportedDartMutantRange). Install one that is:',
+      'works with (${dartMutantRange()}). Install one that is:',
     );
-    io.err(
-      "  $dartMutantInstall '^${supportedDartMutant.major}."
-      "${supportedDartMutant.minor}.0'",
-    );
+    io.err("  $dartMutantInstall '${dartMutantConstraint()}'");
     return 2;
   }
 

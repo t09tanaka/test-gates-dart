@@ -499,7 +499,6 @@ It is handed to `dart_mutant run` as it is, like upstream hands what it does not
 
 ```bash
 dart run test_gates mutation -- --jobs 3                 # test runs at a time, in working copies of the package
-dart run test_gates mutation -- --schemata               # the mutants of a gate in one program (experimental there)
 dart run test_gates mutation -- --html reports/mutation/mutation.html
 dart run test_gates mutation -- --shard 1/4              # a part of the run, see below
 dart run test_gates mutation --force -- --jobs 2 -- fvm flutter test --no-pub
@@ -820,7 +819,7 @@ Other limits:
 Until 0.1.1 `test_gates mutation` made the mutants and ran the tests itself. From 0.2.0 on it starts [`dart_mutant`](https://pub.dev/packages/dart_mutant) for that and judges its report. `test-gates.json` is read as before.
 
 1. Install the tool, on every machine that runs `mutation` and in CI: `dart pub global activate dart_mutant` (Dart 3.11 or later). Without it `mutation` ends with exit code 2.
-2. A test command that was given behind `--` now goes behind a second one: `test_gates mutation -- fvm flutter test --no-pub` becomes `test_gates mutation -- -- fvm flutter test --no-pub`. What follows the first `--` are options of `dart_mutant run` (`--jobs`, `--shard`, `--schemata`, `--html`). The old form is refused with exit code 2.
+2. A test command that was given behind `--` now goes behind a second one: `test_gates mutation -- fvm flutter test --no-pub` becomes `test_gates mutation -- -- fvm flutter test --no-pub`. What follows the first `--` are options of `dart_mutant run` (`--jobs`, `--shard`, `--html`). The old form is refused with exit code 2.
 3. Run `test_gates mutation --force` once. The mutators of 0.1 make the same mutants as before, so every `equivalentMutants` and `expectedTimeouts` entry still matches. **New survivors are to be expected**: `dart_mutant` also changes members and numbers by their types (`MethodExpression`, `NumberLiteral`, the guard mutators, see [Mutators](#mutators)), which 0.1 did not. Each is a decision no test checked. Fix the test; allow only what no input can observe.
 4. Delete `.dart_tool/test_gates/mutation/`. The results and backups that 0.1 kept there are no longer read. (When a run of 0.1 was killed, `git diff` shows the mutant it left in a gate: put the gate back first.)
 
