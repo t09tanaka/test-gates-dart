@@ -216,7 +216,8 @@ Future<int> runMutation(
     } finally {
       await signals.cancel();
     }
-    if (result.signal != null) {
+    final signal = result.signal ?? signals.signal;
+    if (signal != null) {
       if (result.killed) {
         io.err(
           '$executable mutation: $dartMutant did not end within '
@@ -226,7 +227,7 @@ Future<int> runMutation(
         );
       }
       io.err('$executable mutation: interrupted. Nothing was judged');
-      return signalExitCode(result.signal!);
+      return signalExitCode(signal);
     }
     if (result.exitCode == null) {
       io.err(

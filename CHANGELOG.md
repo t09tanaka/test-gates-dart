@@ -141,6 +141,9 @@ gates in other time zones. The README has the steps under "Upgrading from
   have a mutant in it.
 - With two jobs or more (`dart_mutant` decides; `-- --jobs <n>`), the gates
   are not changed in place: the mutants are put into working copies.
+- `check`, `lcov` and `mutation-result` end with a line and exit code 1
+  when a file cannot be read (a gate without read permission). They ended
+  with an unhandled error.
 - `mutation` started from a compiled executable of the tool looks for
   `dart pub global run dart_mutant` with the `dart` on `PATH`.
 - When `dart_mutant` is not found, the message says what each command that

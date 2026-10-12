@@ -61,9 +61,12 @@ Future<int> runTest(
   } finally {
     await signals.cancel();
   }
-  if (result.signal != null) {
+  // Also a signal that came when the command had just ended: in `all` the
+  // next check would otherwise start.
+  final signal = result.signal ?? signals.signal;
+  if (signal != null) {
     io.err('$executable test: interrupted');
-    return signalExitCode(result.signal!);
+    return signalExitCode(signal);
   }
   if (result.exitCode != 0) {
     io.err(

@@ -153,20 +153,23 @@ Future<int> runAsync(List<String> argv, Io io) async {
           );
       }
     }
+    // The commands that only read files. Inside the try as well: a file
+    // they cannot read ends them like the others, with a line and exit
+    // code 1, whether they are started alone or by `all`.
+    return run(argv, io);
   } on UsageError catch (error) {
     return _usage(error, io);
   } on ManifestError catch (error) {
     return _unusable(error, io);
   } on FileSystemException catch (error) {
-    // A tracefile, a report or a plan that cannot be deleted, read or
-    // written.
+    // A source file, a tracefile, a report or a plan that cannot be
+    // deleted, read or written.
     io.err(
       '$executable: ${error.osError?.message ?? error.message}'
       '${error.path == null ? '' : ' (${error.path})'}',
     );
     return 1;
   }
-  return run(argv, io);
 }
 
 /// Runs the command line and returns the exit code. The commands that wait

@@ -1,6 +1,8 @@
 @Timeout(Duration(minutes: 2))
 library;
 
+import 'dart:io';
+
 import 'package:test/test.dart';
 import 'package:test_gates/src/cli.dart';
 
@@ -102,6 +104,7 @@ void main() {
       ...expected.out,
       'test_gates all: OK (check, test --selfcheck, timezones)',
     ]);
+    expect(package.err, expected.err);
     expect(tracefile(), expected.tracefile);
     expect(package.read('lib/a.dart'), 'int a() => 1;\n');
   });
@@ -166,10 +169,103 @@ void main() {
     expect(expected.code, 1);
 
     expect(await run(['all', '--no-mutation']), 1);
+    expect(package.out, expected.out);
     expect(package.err, [
       ...expected.err,
       'test_gates all: stopped at "timezones" (exit code 1)',
     ]);
+  });
+
+  group('started as processes', () {
+    /// The command line in a process of its own: its exit code, and what
+    /// it wrote to stdout and stderr.
+    ({int code, String out, String err}) start(List<String> arguments) {
+      final result = Process.runSync(Platform.resolvedExecutable, [
+        File('bin/test_gates.dart').absolute.path,
+        arguments.first,
+        '--dir',
+        package.dir.path,
+        ...arguments.skip(1),
+      ]);
+      return (
+        code: result.exitCode,
+        out: result.stdout as String,
+        err: result.stderr as String,
+      );
+    }
+
+    for (final (name, break_, code) in [
+      ('every check passes', false, 0),
+      ('test fails', true, 1),
+    ]) {
+      test('all is the three commands, each started by itself: $name', () {
+        if (break_) {
+          package.write('lib/b.dart', 'int b() => 2;\nint untested() => 3;\n');
+        }
+        manifest();
+        final out = StringBuffer();
+        final err = StringBuffer();
+        var last = 0;
+        for (final check in three) {
+          final result = start(check);
+          out.write(result.out);
+          err.write(result.err);
+          last = result.code;
+          if (last != 0) {
+            break;
+          }
+        }
+        expect(last, code);
+        final expectedTracefile = tracefile();
+        package.file('coverage/lcov.info').deleteSync();
+
+        final all = start(['all', '--no-mutation']);
+        expect(all.code, code);
+        expect(
+          all.out,
+          code == 0
+              ? '${out}test_gates all: OK (check, test, timezones)\n'
+              : '$out',
+        );
+        expect(
+          all.err,
+          code == 0
+              ? '$err'
+              : '${err}test_gates all: stopped at "test" (exit code 1). Not '
+                    'run: timezones\n',
+        );
+        expect(tracefile(), expectedTracefile);
+      });
+    }
+
+    test('a gate that cannot be read: check ends with a line and exit code '
+        '1, alone and in all', () {
+      if ((Process.runSync('id', ['-u']).stdout as String).trim() == '0') {
+        markTestSkipped('root reads a file whatever its permissions are');
+        return;
+      }
+      manifest();
+      Process.runSync('chmod', ['000', '${package.dir.path}/lib/a.dart']);
+      addTearDown(
+        () =>
+            Process.runSync('chmod', ['644', '${package.dir.path}/lib/a.dart']),
+      );
+      final alone = start(['check']);
+      expect(alone.code, 1);
+      expect(alone.out, isEmpty);
+      expect(alone.err, startsWith('test_gates: '));
+      expect(alone.err, contains('lib/a.dart'));
+      expect(alone.err.trim().split('\n'), hasLength(1));
+
+      final all = start(['all', '--no-mutation']);
+      expect(all.code, 1);
+      expect(all.out, isEmpty);
+      expect(
+        all.err,
+        '${alone.err}test_gates all: stopped at "check" (exit code 1). Not '
+        'run: test, timezones\n',
+      );
+    }, testOn: '!windows');
   });
 
   test('an unusable test-gates.json: exit code 2, from the first '
