@@ -291,7 +291,7 @@ A gate that imports nothing impure itself can still do I/O through a file it imp
 - **What is followed:** `import` and `export` with a relative URI, `package:<name>/…` (`name` of `pubspec.yaml`) or a prefix of `settings.importAliases`, and in the files on the way also a `part` that no generator wrote. Every URI of a conditional import is followed. Each file is read once, so imports that form a circle end.
 - **What is not followed:** another package and the SDK (they are judged by their names, as in the tables above), a generated part (`*.g.dart`, `*.freezed.dart`), an import that is a finding already, and a URI that `settings.impureImports.allow` exempts. That last one is the way to say "this file is fine, and so is what is behind it": `"allow": ["^legacy/clock\\.dart$"]`.
 - **What is checked in a file on the way:** what it imports, exports and has as a part, its reads of the environment, the patterns of `settings.forbiddenSource.add`, the names of `settings.impureNamedImports`, and in allowlist mode what it may import. Coverage ignore comments and blocks that share a line are rules about how a gate is measured, and are checked in gates only.
-- A file that cannot be read (it is not there, or its name is spelt in another case) is a violation: what it brings in cannot be checked. A file a generator writes has to be there when `check` runs.
+- A file that cannot be read (it is not there, or its name is spelt in another case) is a violation: what it brings in cannot be checked. A file a generator writes has to be there when `check` runs, and the message says so: `… reaches lib/rates.g.dart, which cannot be read, so what it brings in cannot be checked. When a generator writes that file, run it before check (lib/fee.dart → lib/rates.g.dart)`.
 
 The finding is reported at the line of the gate's own directive, with the file and line it is in, and the files in between. The example with `import 'limits.dart';` added to a gate, where `lib/limits.dart` says `export 'freight.dart';` and `lib/freight.dart` reads an environment variable through `dart:io`:
 
@@ -700,9 +700,9 @@ Measured with Dart 3.13.2 on a Mac with 12 logical processors, `--force`, one ru
 | Package                                    | Gates | Mutants                        | Full run (`--force`) | Test runs at a time |
 | ------------------------------------------ | ----- | ------------------------------ | -------------------- | ------------------- |
 | [`example/`](example)                      | 2     | 69, of which 2 do not compile  | 1 min 1 s            | 1, in place (it has a `path:` dependency) |
-| This package, its own gates                | 14    | 2414, of which 245 do not compile | about 15 min      | 3, in working copies (the default there) |
+| This package, its own gates                | 14    | 2527, of which 253 do not compile | about 19 min      | 3, in working copies (the default there) |
 
-Of the 2414 mutants of this package 2161 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
+Of the 2527 mutants of this package 2266 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
 
 A mutant that compiles costs one start of the test runner on the test of its gate. A second run without `--force` and without a change runs nothing but the timeouts.
 

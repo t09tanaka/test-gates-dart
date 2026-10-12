@@ -158,13 +158,15 @@ DartSource parseDartSource(String source) {
   final code = StringBuffer();
   var written = 0;
   void blankComments(Token token) {
-    Token? comment = token.precedingComments;
-    while (comment is Token) {
+    for (
+      Token? comment = token.precedingComments;
+      comment is Token;
+      comment = comment.next
+    ) {
       code
         ..write(content.substring(written, comment.offset))
         ..write(comment.lexeme.replaceAll(RegExp(r'[^\r\n]'), ' '));
       written = comment.end;
-      comment = comment.next;
     }
   }
 

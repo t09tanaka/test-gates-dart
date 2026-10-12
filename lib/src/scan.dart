@@ -149,8 +149,8 @@ List<_Finding> _directiveFindings(
 }
 
 /// The files of the package that the file at [path] brings in: what it
-/// imports and exports, and (not for the gate itself, whose parts are
-/// judged by the part rule) its parts that no generator wrote. A URI that
+/// imports and exports, and its parts that no generator wrote. (In the gate
+/// itself such a part is a finding, so it is not followed.) A URI that
 /// `settings.impureImports.allow` exempts is not followed, and neither is
 /// another package or the SDK: those are judged by their names. A directive
 /// that is a finding already ([rejected], by line) is not followed either:
@@ -160,14 +160,12 @@ List<({ImportRef from, String target})> _projectFiles(
   DartSource parsed,
   ResolvedSettings settings,
   List<ImportAlias> aliases,
-  List<_Finding> rejected, {
-  required bool parts,
-}) => [
+  List<_Finding> rejected,
+) => [
   for (final imported in parsed.imports)
     if (!rejected.any((finding) => finding.line == imported.line) &&
         !_exempt(imported, settings) &&
-        (imported.kind != DirectiveKind.part ||
-            (parts && !isGeneratedPart(imported.uri))))
+        (imported.kind != DirectiveKind.part || !isGeneratedPart(imported.uri)))
       if (resolveUri(imported.uri, path, aliases) case final target?)
         (from: imported, target: target),
 ];
@@ -197,7 +195,6 @@ List<Violation> _reached(
       settings,
       aliases,
       rejected,
-      parts: false,
     ))
       (start: step.from, path: step.target, way: [gatePath, step.target]),
   ];
@@ -218,7 +215,8 @@ List<Violation> _reached(
     final source = readSource(path);
     if (source == null) {
       report(
-        '$path, which cannot be read, so what it brings in cannot be checked',
+        '$path, which cannot be read, so what it brings in cannot be '
+        'checked. When a generator writes that file, run it before check',
       );
       continue;
     }
@@ -248,7 +246,6 @@ List<Violation> _reached(
       settings,
       aliases,
       directives,
-      parts: true,
     )) {
       queue.add((start: start, path: step.target, way: [...way, step.target]));
     }

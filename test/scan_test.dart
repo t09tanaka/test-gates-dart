@@ -213,12 +213,12 @@ void main() {
         }),
         [
           '1: import of "zone.dart" reaches lib/models/missing.dart, which '
-              'cannot be read, so what it brings in cannot be checked '
-              '(lib/models/shipping_fee.dart → lib/models/zone.dart → '
+              'cannot be read, so what it brings in cannot be checked. When a generator writes that file, run it '
+              'before check (lib/models/shipping_fee.dart → lib/models/zone.dart → '
               'lib/models/missing.dart)',
           '2: import of "../gone.dart" reaches lib/gone.dart, which cannot be '
-              'read, so what it brings in cannot be checked '
-              '(lib/models/shipping_fee.dart → lib/gone.dart)',
+              'read, so what it brings in cannot be checked. When a generator writes that file, run it '
+              'before check (lib/models/shipping_fee.dart → lib/gone.dart)',
         ],
       );
     });

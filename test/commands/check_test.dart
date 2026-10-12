@@ -262,7 +262,8 @@ void f() => print(home);
             'lib/src/clock.dart)',
         '  - lib/a.dart:1: import of "src/fees.dart" reaches '
             'lib/src/gone.dart, which cannot be read, so what it brings in '
-            'cannot be checked (lib/a.dart → lib/src/fees.dart → '
+            'cannot be checked. When a generator writes that file, run it '
+            'before check (lib/a.dart → lib/src/fees.dart → '
             'lib/src/clock.dart → lib/src/gone.dart)',
         '  - lib/b.dart:1: import of "package:app/src/fees.dart" reaches '
             'lib/src/clock.dart:1: import of "dart:io" (file system / '
@@ -270,7 +271,8 @@ void f() => print(home);
             'lib/src/clock.dart)',
         '  - lib/b.dart:1: import of "package:app/src/fees.dart" reaches '
             'lib/src/gone.dart, which cannot be read, so what it brings in '
-            'cannot be checked (lib/b.dart → lib/src/fees.dart → '
+            'cannot be checked. When a generator writes that file, run it '
+            'before check (lib/b.dart → lib/src/fees.dart → '
             'lib/src/clock.dart → lib/src/gone.dart)',
       ]);
     });
