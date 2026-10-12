@@ -8,7 +8,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
-import 'package:test_gates/src/commands/mutation.dart';
 
 import 'package_fixture.dart';
 
@@ -92,24 +91,46 @@ void main() {
   test('a tool that does not end after the signal is killed when its time '
       'is up, and the message says what that can leave behind', () async {
     package.write('fake.json', jsonEncode({'hang': true, 'deaf': true}));
-    final exit = runMutation(
-      package.dir.path,
-      null,
-      const [],
-      package.io,
-      candidates: [
-        ['${package.dir.path}/bin/dart_mutant'],
-      ],
-      grace: const Duration(seconds: 2),
-    );
+    // The command with two seconds of grace in place of sixty. It is a
+    // process of its own: a signal to the process of the tests would reach
+    // every test that waits for one.
+    package.write('short_grace.dart', '''
+import 'dart:io';
+
+import 'package:test_gates/src/commands/mutation.dart';
+import 'package:test_gates/src/commands/output.dart';
+
+Future<void> main(List<String> arguments) async {
+  exitCode = await runMutation(
+    '.',
+    null,
+    const [],
+    Io(out: stdout.writeln, err: stderr.writeln),
+    candidates: [arguments],
+    grace: const Duration(seconds: 2),
+  );
+}
+''');
+    final process = await Process.start(Platform.resolvedExecutable, [
+      '--packages=${File('.dart_tool/package_config.json').absolute.path}',
+      'short_grace.dart',
+      '${package.dir.path}/bin/dart_mutant',
+    ], workingDirectory: package.dir.path);
+    final stderrText = process.stderr.transform(systemEncoding.decoder).join();
+    unawaited(process.stdout.drain<void>());
+    var ended = false;
+    unawaited(process.exitCode.then((_) => ended = true));
     final started = package.file('started');
     while (!started.existsSync() || started.readAsStringSync().isEmpty) {
+      if (ended) {
+        fail('the command ended before the tool ran: ${await stderrText}');
+      }
       await Future<void>.delayed(const Duration(milliseconds: 50));
     }
     final tool = int.parse(started.readAsStringSync());
-    Process.killPid(pid, ProcessSignal.sighup);
-    expect(await exit, 129);
-    expect(package.err, [
+    process.kill(ProcessSignal.sighup);
+    expect(await process.exitCode, 129);
+    expect((await stderrText).trim().split('\n'), [
       'test_gates mutation: dart_mutant did not end within 2 seconds of the '
           'signal and was killed. It may not have put back what it changed: '
           'look at "git status" for a gate with a mutant in it',
