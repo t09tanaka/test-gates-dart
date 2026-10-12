@@ -4,24 +4,28 @@
 
 `test_gates mutation` no longer makes the mutants and runs the tests itself.
 It starts [`dart_mutant`](https://pub.dev/packages/dart_mutant) for that, as
-the npm package starts Stryker, and judges the report. The README has the
-steps under "Upgrading from 0.1".
+the npm package starts Stryker, and judges the report. `check` follows the
+imports of a gate, and a new command, `timezones`, runs the tests of the
+gates in other time zones. The README has the steps under "Upgrading from
+0.1".
 
 ### Breaking
 
-- The lowest `dart_mutant` that is supported is 0.1.1: an experimental
-  option of 0.1.0 could report a mutant as killed that survives.
-- `mutation` needs `dart_mutant` 0.1.1 or a later 0.1.x (`dart pub global activate
-  dart_mutant`; Dart 3.11 or later). It is looked for on `PATH`, then as
-  `dart pub global run dart_mutant`. When it is missing, or is not one of those,
-  the exit code is 2 and nothing is run. The other commands run on Dart 3.9
-  as before.
+`mutation`:
+
+- `mutation` needs `dart_mutant` 0.1.1 or a later 0.1.x (`dart pub global
+  activate dart_mutant`; Dart 3.11 or later). It is looked for on `PATH`,
+  then as `dart pub global run dart_mutant`. When it is missing, or is not
+  one of those versions, the exit code is 2 and nothing is run. 0.1.0 is not
+  supported: an experimental option of it could report a mutant as killed
+  that survives. The other commands run on Dart 3.9 as before.
 - What follows `--` on the command line of `mutation` is handed to
-  `dart_mutant run` (`--jobs <n>`, `--shard <i>/<n>`, `--html <file>`). It used to be the command that runs test files; that
-  command now goes behind a second `--` (`mutation -- -- fvm flutter test
-  --no-pub`), and the old form is refused with exit code 2. `--dir`, `--plan`,
-  `--report` and `--only` are refused behind `--`: `mutation` sets them.
-  `--help` and `--version` are refused there as well.
+  `dart_mutant run` (`--jobs <n>`, `--shard <i>/<n>`, `--html <file>`). It
+  used to be the command that runs test files; that command now goes behind
+  a second `--` (`mutation -- -- fvm flutter test --no-pub`), and the old
+  form is refused with exit code 2. `--dir`, `--plan`, `--report` and
+  `--only` are refused behind `--`: `mutation` sets them. `--help` and
+  `--version` are refused there as well.
 - More mutants, so new survivors are to be expected. The twelve mutators of
   0.1 make the same mutants as before, and an `equivalentMutants` or
   `expectedTimeouts` entry written for 0.1 still matches. `dart_mutant` also
@@ -42,6 +46,8 @@ steps under "Upgrading from 0.1".
 - The lines `mutation` printed per gate are now printed by `dart_mutant`, in
   its format, and the report names `dart_mutant` as its `framework`.
 
+`check` and `test-gates.json`:
+
 - `check` follows the imports of a gate. The imports and exports that point
   into the package are followed, file by file, and what a file on the way
   imports, reads from the environment or matches of
@@ -50,6 +56,12 @@ steps under "Upgrading from 0.1".
   impure import was one file away now fails. A file that is to be left out,
   with what is behind it, goes into `settings.impureImports.allow`. A file
   on the way that cannot be read is a violation as well.
+- `check` reports an import whose URI is not written plainly (an
+  upper-case scheme, a `%`, `file:`): Dart reads `DART:io` as `dart:io`, and
+  the rules compare the text. An import that leaves the package (`../..`
+  above its root) is reported as a file that cannot be read, and a
+  `pubspec.yaml` whose `name` is not found is a violation, because
+  `package:<name>/` could then not be followed.
 - More packages are impure by default: `go_router`, `auto_route`,
   `cached_network_image`, `google_fonts` (UI); `file`, `process`, `platform`
   (files, processes, the environment); `connectivity_plus`,
@@ -65,15 +77,32 @@ steps under "Upgrading from 0.1".
   `package:file` and `package:platform` are also what a pure function takes
   a file system or a platform as; `settings.impureImports.allow` exempts
   them, as it exempts any other.
-- `check` reports an import whose URI is not written plainly (an
-  upper-case scheme, a `%`, `file:`): Dart reads `DART:io` as `dart:io`, and
-  the rules compare the text. An import that leaves the package (`../..`
-  above its root) is reported as a file that cannot be read, and a
-  `pubspec.yaml` whose `name` is not found is a violation, because
-  `package:<name>/` could then not be followed.
 - A key that an entry of `equivalentMutants` / `expectedTimeouts` does not
   have is a violation (exit code 1), and the entry is not used. A misspelt
   `occurrence` was read as an entry without one.
+- A pattern of `settings.forbiddenSource.add` is tested against the code of
+  a line. What a comment or a doc comment says no longer matches; the text
+  of a string literal still does.
+
+### Added
+
+- `test_gates timezones [--zone <name>] [--all] [-- <command>]`: runs the
+  tests of the gates once more in other time zones (the `TZ` environment
+  variable; macOS and Linux), so that a decision about a day, a month or an
+  hour does not pass because of where the machine is. By default in the two
+  ends of the clocks, `Pacific/Kiritimati` (UTC+14) and `Etc/GMT+12`
+  (UTC-12): at every moment the date in one of them is another one than in
+  UTC. Only gates that name `DateTime` (in the gate, in its test, or in a
+  file of the package the two reach) are run; when none does, no test is
+  started. A zone that is not an entry of the time zone database of the
+  machine is refused.
+- `mutation --not-evaluable` and `mutation-result --not-evaluable` list the
+  mutants that could not be evaluated, with the message of the compiler when
+  the report has it. Without the option they are counted, as before.
+- `check` says in a note when there is no `pubspec.yaml` and a gate has
+  `package:` imports, or reaches a file that has: without the name of the
+  package they are taken for imports of another package, and are not
+  followed.
 
 ### Changed
 
@@ -96,24 +125,17 @@ steps under "Upgrading from 0.1".
   put together with `dart_mutant merge` and judged with `mutation-result`.
 - A signal (SIGINT, SIGTERM, SIGHUP) is handed to `dart_mutant` and to every
   process that descends from it, and they are waited for (60 seconds at the
-  most) while the tool puts back what it changed.
+  most) while the tool puts back what it changed. When the tool does not end
+  in that time and is killed, the message says so, and that a gate may still
+  have a mutant in it.
 - With two jobs or more (`dart_mutant` decides; `-- --jobs <n>`), the gates
   are not changed in place: the mutants are put into working copies.
-- `lcov`: the parser no longer trims the fields of a `DA:` / `BRDA:` / `LF:`
-  / `LH:` entry before it reads them as numbers. Blanks around a number are
-  read as before; the calls did nothing.
-
-- A pattern of `settings.forbiddenSource.add` is tested against the code of
-  a line. What a comment or a doc comment says no longer matches; the text
-  of a string literal still does.
-- `mutation --not-evaluable` and `mutation-result --not-evaluable` list the
-  mutants that could not be evaluated, with the message of the compiler when
-  the report has it. Without the option they are counted, as before.
 - When `dart_mutant` is not found, the message says what each command that
   was tried did: that it could not be started, or its exit code and the
   first line it printed.
-- When the tool does not end within 60 seconds of a signal and is killed,
-  the message says so, and that a gate may still have a mutant in it.
+- `lcov`: the parser no longer trims the fields of a `DA:` / `BRDA:` / `LF:`
+  / `LH:` entry before it reads them as numbers. Blanks around a number are
+  read as before; the calls did nothing.
 
 ### Removed
 

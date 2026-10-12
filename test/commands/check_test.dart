@@ -320,6 +320,55 @@ void f() => print(home);
       );
     });
 
+    test('no pubspec.yaml: a note says which gates have "package:" imports '
+        'that were not followed', () {
+      manifest(
+        ['lib/a.dart', 'lib/b.dart'],
+        settings: {
+          'spec': {'suffixes': <String>[]},
+          'importAliases': [
+            {'prefix': 'package:shared/', 'target': 'shared/lib/'},
+          ],
+        },
+      );
+      write('lib/a.dart', "import 'package:app/c.dart';\n");
+      // Relative, of the SDK, and through an alias: nothing to say.
+      write(
+        'lib/b.dart',
+        "import 'c.dart';\nimport 'dart:math';\n"
+            "import 'package:shared/d.dart';\n",
+      );
+      write('lib/c.dart', "import 'dart:io';\n");
+      write('shared/lib/d.dart', '');
+      expect(check(), 1);
+      expect(out, [
+        'test_gates check: note: no pubspec.yaml here, so the "package:" '
+            'imports of lib/a.dart (and of the files they reach) were not '
+            'followed: without the name of the package, each is taken for '
+            'an import of another package',
+      ]);
+      expect(err, [
+        'test_gates check: 1 violation(s)',
+        startsWith(
+          '  - lib/b.dart:1: import of "c.dart" reaches lib/c.dart:1: ',
+        ),
+      ]);
+      // A "package:" import one file away is noted for the gate as well.
+      out.clear();
+      err.clear();
+      write('shared/lib/d.dart', "import 'package:app/c.dart';\n");
+      expect(check(), 1);
+      expect(out.single, contains('imports of lib/a.dart, lib/b.dart (and '));
+      write('shared/lib/d.dart', '');
+      // With the pubspec the import is followed, and nothing is noted.
+      out.clear();
+      err.clear();
+      write('pubspec.yaml', 'name: app\n');
+      expect(check(), 1);
+      expect(out, isEmpty);
+      expect(err.first, 'test_gates check: 2 violation(s)');
+    });
+
     test('a file that is reached is found by its exact spelling', () {
       manifest(
         ['lib/a.dart'],

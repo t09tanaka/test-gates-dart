@@ -104,6 +104,11 @@
       ]
     },
     {
+      "path": "lib/src/zones.dart",
+      "decides": "Which time zones the tests of the gates are run in, which names are names of zones, which command runs the tests, and which gates can depend on the zone at all",
+      "impact": "A gate that decides by the zone of the machine is left out of the run, or the run is made in a zone that finds nothing, and the mistake shows on another machine"
+    },
+    {
       "path": "lib/src/args.dart",
       "decides": "Which command-line arguments belong to test_gates, which command they select, and what is handed to the test command",
       "impact": "A typo in an option is silently ignored, or --force and --first are dropped and a weaker run is taken for the full one",

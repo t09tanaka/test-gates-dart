@@ -232,6 +232,9 @@ const _signalGrace = Duration(milliseconds: 250);
 /// the processes that descend from it (found with `ps`; on Windows, and where
 /// there is no `ps`, only the process itself).
 ///
+/// [environment] is added to the environment of this process for the
+/// command.
+///
 /// With [capture] the output is collected; otherwise it goes to the terminal.
 /// When [signals] reports a signal, the child is ended and the result carries
 /// the signal. When the command runs longer than [timeout], it is ended with
@@ -249,6 +252,7 @@ Future<CommandResult> runCommand(
   Duration? timeout,
   bool handOver = false,
   Duration grace = handOverGrace,
+  Map<String, String>? environment,
 }) async {
   final Process process;
   try {
@@ -256,6 +260,7 @@ Future<CommandResult> runCommand(
       command.first,
       command.sublist(1),
       workingDirectory: workingDirectory,
+      environment: environment,
       runInShell: Platform.isWindows,
       mode: capture ? ProcessStartMode.normal : ProcessStartMode.inheritStdio,
     );

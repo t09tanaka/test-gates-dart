@@ -179,6 +179,47 @@ void main() {
     );
   });
 
+  test('timezones: --zone once per zone, --all, and a command after '
+      '"--"', () {
+    final plain = parseArgs(['timezones']);
+    expect((plain.command, plain.mode), ('timezones', null));
+    expect(plain.zones, isEmpty);
+    final args = parseArgs([
+      'timezones',
+      '--zone',
+      'UTC',
+      '--all',
+      '--zone=Asia/Tokyo',
+      '--dir',
+      'app',
+      '--',
+      'fvm',
+      'flutter',
+      'test',
+    ]);
+    expect(args.zones, ['UTC', 'Asia/Tokyo']);
+    expect((args.mode, args.dir), ('all', 'app'));
+    expect(args.rest, ['fvm', 'flutter', 'test']);
+    expect(args.gates, isEmpty);
+    expect(
+      () => parseArgs(['timezones', '--zone']),
+      usageError('--zone needs a value'),
+    );
+    expect(
+      () => parseArgs(['timezones', '--first']),
+      usageError('unknown argument for timezones: --first'),
+    );
+    expect(
+      () => parseArgs(['timezones', '--']),
+      usageError('"--" must be followed by the command to run'),
+    );
+    expect(
+      () => parseArgs(['test', '--zone', 'UTC']),
+      usageError('unknown argument for test: --zone'),
+    );
+    expect(parseArgs(['mutation', '--gate', 'a']).zones, isEmpty);
+  });
+
   test('mutation-result takes --dir and --report', () {
     final args = parseArgs(['mutation-result', '--report=r.json']);
     expect((args.command, args.report), ('mutation-result', 'r.json'));
@@ -190,7 +231,8 @@ void main() {
     expect(
       () => parseArgs(['mutation-result', '--', 'dart', 'test']),
       usageError(
-        '"--" is only accepted by the test, selfcheck and mutation commands',
+        '"--" is only accepted by the test, selfcheck, timezones and mutation '
+        'commands',
       ),
     );
     expect(
@@ -230,7 +272,8 @@ void main() {
     expect(
       () => parseArgs(['lcov', '--', 'dart', 'test']),
       usageError(
-        '"--" is only accepted by the test, selfcheck and mutation commands',
+        '"--" is only accepted by the test, selfcheck, timezones and mutation '
+        'commands',
       ),
     );
     expect(

@@ -1,0 +1,26 @@
+// Stands in for "dart test" / "flutter test" in the tests of
+// `test_gates timezones`. Kept as .txt so that it is not analyzed or
+// formatted with the package; the tests copy it into a temporary directory
+// and run it there.
+//
+// Usage: dart fake_zone_test.dart <test file>...
+//
+// Every run appends "TZ=<zone> <arguments>" to "zones.log". The run fails
+// (exit 1, with a line that names the zone) when the zone is listed in
+// "fail-in", one name per line.
+import 'dart:io';
+
+List<String> listed(String name) =>
+    File(name).existsSync() ? File(name).readAsLinesSync() : const [];
+
+Future<void> main(List<String> arguments) async {
+  final zone = Platform.environment['TZ'];
+  File('zones.log').writeAsStringSync(
+    'TZ=$zone ${arguments.join(' ')}\n',
+    mode: FileMode.append,
+  );
+  if (listed('fail-in').contains(zone)) {
+    stdout.writeln('Expected: <31>\n  Actual: <1> in $zone');
+    exitCode = 1;
+  }
+}

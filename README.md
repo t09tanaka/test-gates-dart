@@ -14,6 +14,7 @@ It is the Dart port of [`@t09tanaka/test-gates`](https://github.com/t09tanaka/te
 | `test_gates lcov`            | Every gate at 100% line coverage and 100% branch coverage                   |
 | `test_gates test`            | Runs the tests with coverage, then `lcov`. One command for a pre-push hook  |
 | `test_gates selfcheck`       | Negative control: with unexecuted code in it, a gate must fail              |
+| `test_gates timezones`       | Runs the tests of the gates that name `DateTime` in other time zones        |
 | `test_gates mutation`        | Mutation test of the gates: runs `dart_mutant` and judges its report, with a per-mutant allow list |
 | `test_gates mutation-result` | Judges an existing mutation report (mutation-testing-elements JSON schema)  |
 
@@ -84,12 +85,13 @@ Coming from 0.1: [Upgrading from 0.1](#upgrading-from-01).
 
    (`dart test` has these two options from `package:test` 1.27.0 on.)
 
-2. Run the four checks. Each one says what is missing, as `file:line: reason`.
+2. Run the checks. Each one says what is missing, as `file:line: reason`.
 
    ```bash
    dart run test_gates check       # the list, the test of each gate, pure modules
    dart run test_gates test        # the tests with coverage: 100% lines and branches per gate
    dart run test_gates selfcheck   # can the gate fail at all?
+   dart run test_gates timezones   # do the tests pass in another time zone?
    dart run test_gates mutation    # do the tests check the decisions?
    ```
 
@@ -102,6 +104,7 @@ Coming from 0.1: [Upgrading from 0.1](#upgrading-from-01).
    set -e
    dart run test_gates check
    dart run test_gates test
+   dart run test_gates timezones
    dart run test_gates mutation
    ```
 
@@ -111,6 +114,7 @@ Coming from 0.1: [Upgrading from 0.1](#upgrading-from-01).
    dart run test_gates check
    dart run test_gates test
    dart run test_gates selfcheck
+   dart run test_gates timezones
    dart run test_gates mutation --force
    ```
 
@@ -291,7 +295,7 @@ A gate that imports nothing impure itself can still do I/O through a file it imp
 - **What is followed:** `import` and `export` with a relative URI, `package:<name>/…` (`name` of `pubspec.yaml`) or a prefix of `settings.importAliases`, and in the files on the way also a `part` that no generator wrote. Every URI of a conditional import is followed. Each file is read once, so imports that form a circle end.
 - **What is not followed:** another package and the SDK (they are judged by their names, as in the tables above), a generated part (`*.g.dart`, `*.freezed.dart`), an import that is a finding already, and a URI that `settings.impureImports.allow` exempts. That last one is the way to say "this file is fine, and so is what is behind it": `"allow": ["^legacy/clock\\.dart$"]`.
 - **What is checked in a file on the way:** what it imports, exports and has as a part, its reads of the environment, the patterns of `settings.forbiddenSource.add`, the names of `settings.impureNamedImports`, and in allowlist mode what it may import. Coverage ignore comments and blocks that share a line are rules about how a gate is measured, and are checked in gates only.
-- **The package is the directory of `test-gates.json`.** `package:<name>/` is followed with the `name` of the `pubspec.yaml` next to it (a pubspec whose name is not found is a violation). A gate in a package below it (`packages/shop/lib/…`, imported as `package:shop/…`) is only followed with an entry in `settings.importAliases`. An import that leaves the package (`../../outside.dart`) is reported as a file that cannot be read.
+- **The package is the directory of `test-gates.json`.** `package:<name>/` is followed with the `name` of the `pubspec.yaml` next to it (a pubspec whose name is not found is a violation). Without a `pubspec.yaml` no `package:` import can be told from an import of another package: `check` still runs, and says in a note which gates have such imports, or reach a file that has one, that were not followed. A gate in a package below it (`packages/shop/lib/…`, imported as `package:shop/…`) is only followed with an entry in `settings.importAliases`. An import that leaves the package (`../../outside.dart`) is reported as a file that cannot be read.
 - **A URI has to be written plainly.** Dart reads `DART:io` as `dart:io` and `package:%68ttp/…` as `package:http/…`, and the rules compare the text. A URI with an upper-case scheme, with `%`, or with `file:` is reported as one that cannot be checked.
 - A file that cannot be read (it is not there, or its name is spelt in another case) is a violation: what it brings in cannot be checked. A file a generator writes has to be there when `check` runs, and the message says so: `… reaches lib/rates.g.dart, which cannot be read, so what it brings in cannot be checked. When a generator writes that file, run it before check (lib/fee.dart → lib/rates.g.dart)`.
 
@@ -459,6 +463,111 @@ The end of the file is a valid place in every Dart file: after all directives, s
 ### What it does not show
 
 Upstream's `selfcheck` leaves out the test of one gate and runs the gate again, once per gate. That also catches a gate whose coverage is held up by the test of another file. This `selfcheck` does not: it shows that the measurement reaches every gate and that the judgement reads it, not which test does the covering. That each gate has a test of its own is checked by [`check`](#test_gates-check), and that this test checks the decisions of the gate by [`mutation`](#test_gates-mutation---force---gate-path---report-path----options), which runs only that test.
+
+## `test_gates timezones [--zone <name>] [--all] [-- <command>]`
+
+Runs the tests of the gates once more in other time zones. A gate that decides which day, month or hour a moment falls in must give the same answer wherever the tests run. A test of such a gate can pass because of where the machine is: on a CI runner in UTC, on the laptop it was written on. `timezones` starts the tests with the `TZ` environment variable set, and requires that they pass.
+
+```bash
+dart run test_gates timezones
+```
+
+The two gates of [`example/`](example) compute with integers, so there is nothing to run:
+
+```
+test_gates timezones: OK (no gate names DateTime, so no test was run: 2 gate(s))
+```
+
+With `--all` they are run all the same:
+
+```
+running "dart test test/bulk_discount_test.dart test/shipping_fee_test.dart" for 2 gate(s) in 2 time zone(s)
+  ✓ TZ=Pacific/Kiritimati (UTC+14): the tests pass
+  ✓ TZ=Etc/GMT+12 (UTC-12): the tests pass
+test_gates timezones: OK (the tests of 2 gate(s) pass in Pacific/Kiritimati, Etc/GMT+12)
+```
+
+What it does:
+
+1. **Picks the gates that can depend on the zone: the ones that name `DateTime`**, in the gate itself, in its test, or in a file of the package that one of the two reaches through its imports, exports and parts (generated parts included, and the helpers a test imports). A local date or time is a `DateTime`, and who makes or reads one names the class or reaches a file that does. A comment or a string that says `DateTime` does not count. The other gates are left out, and the first line says how many; `--all` runs every gate.
+2. Finds the test of each of those gates the way [`check`](#test_gates-check) does. A gate without a test fails.
+3. **Runs those tests together, once per zone**, with `TZ` set to the zone: `flutter test --no-pub <tests>` when the pubspec has a dependency from the Flutter SDK, `dart test <tests>` otherwise (the command `dart_mutant` chooses for the mutation test). A command after `--` replaces it; the test files are appended to it. Nothing of the package is changed, and no coverage is collected.
+4. Requires that every run passes. For a run that fails, the last lines of its output are printed, and the last line of `timezones` has the command to run it by hand.
+
+The zone of the machine itself is not one of the runs: that is what every other run of the tests uses.
+
+### Which zones, and why two
+
+By default the two ends of the world's clocks:
+
+| Zone                 | Offset | Where the date differs from UTC |
+| -------------------- | ------ | ------------------------------- |
+| `Pacific/Kiritimati` | UTC+14 | It is tomorrow from 10:00 UTC on |
+| `Etc/GMT+12`         | UTC-12 | It is yesterday until 12:00 UTC  |
+
+Between them there is no moment of the UTC day at which both have the date of UTC. A test that reads the day of a moment on the calendar of the machine fails in one of the two, whatever moment it uses.
+
+The tests of this package have a small package for exactly this ([`test/fixtures/zones/package`](test/fixtures/zones/package)): a function that reads the day of a moment on the calendar of the machine, with three tests that pass on a machine in UTC, and one function that takes the offset as an argument. `test/commands/real_timezones_test.dart` runs its tests with `dart test` in each zone and expects this:
+
+| Test of the package                              | `UTC`  | `Pacific/Kiritimati` | `Etc/GMT+12` |
+| ------------------------------------------------ | ------ | -------------------- | ------------ |
+| `late in the UTC day` (23:30 UTC is the 31st)    | passes | **fails**            | passes       |
+| `early in the UTC day` (00:30 UTC is the 1st)    | passes | passes               | **fails**    |
+| `the zone it was written in` (noon is hour 12)   | passes | **fails**            | **fails**    |
+| `the offset is an argument`                      | passes | passes               | passes       |
+
+A run in UTC finds none of the three, one end finds two, and the two ends together find all three. In this package a third zone finds nothing the two do not, and it costs one more run, so the default is two. `--zone <name>` (may be given more than once) names the zones to use in their place: `--zone UTC --zone Asia/Tokyo`, or a zone with daylight saving time, which the default two do not have.
+
+This is `timezones` on that package:
+
+```
+running "dart test test/day_test.dart" for 1 gate(s) in 2 time zone(s)
+  ✗ TZ=Pacific/Kiritimati (UTC+14): the tests fail (exit 1)
+      00:00 +0 -1: late in the UTC day [E]
+        Expected: <31>
+          Actual: <1>
+      …
+  ✗ TZ=Etc/GMT+12 (UTC-12): the tests fail (exit 1)
+      00:00 +1: early in the UTC day
+      00:00 +1 -1: early in the UTC day [E]
+        Expected: <1>
+          Actual: <31>
+      …
+test_gates timezones: FAILED (the tests of the gates do not pass in Pacific/Kiritimati, Etc/GMT+12). A gate decides something by the time zone of the machine, or a test expects the zone it was written in. Run them yourself with: TZ=Pacific/Kiritimati dart test test/day_test.dart
+```
+
+(`…` stands for the other lines of the test runner; up to 25 are printed per zone.)
+
+### What it costs
+
+One start of the test runner per zone, on the tests of the gates that name `DateTime`, and nothing when no gate does. Measured with Dart 3.13.2 on a Mac with 12 logical processors, the median of five runs of `dart run test_gates timezones --all` in [`example/`](example) (two gates, two test files):
+
+| Zones                | Time  |
+| -------------------- | ----- |
+| none to run (without `--all`) | 1.0 s |
+| 1 (`--zone UTC`)     | 2.4 s |
+| 2 (the default)      | 3.2 s |
+| 3                    | 4.2 s |
+
+About one second per zone there, on top of the second it takes to start `test_gates`. Another machine has other numbers; what carries over is that a zone costs one start of the test runner.
+
+### Where it works
+
+`TZ` and the time zone database (`/usr/share/zoneinfo`) are how macOS and Linux give a process its zone, and `timezones` works there. `test/commands/real_timezones_test.dart` checks on the machine that runs the tests of this package that `dart test` started with `TZ` runs in that zone; the workflow runs it on Linux and on macOS. `flutter test` is started the same way.
+
+- **A zone the machine does not know is refused** before anything is run, also when there is nothing to run. A process that is started with an unknown `TZ` runs in UTC without saying so, and its run would pass for the wrong reason. Known means: a file of the database that starts as its entries do (`TZif`); the database also has files that are no zones. On Linux the database is where `TZDIR` says, when that is set. A container image without the time zone database (`tzdata`) fails, with exit code 1, when a gate names `DateTime`.
+- **Windows is not supported**: `TZ` is not how a process gets its zone there. The command fails with exit code 1 when a gate names `DateTime`.
+- **The locale is not varied.** On Linux a Dart program takes it from `LANG`; on macOS `LANG` does not change it (the same test file checks both). A check that worked on one of the two would say "passed" on the other without having checked anything.
+- **Daylight saving time is not covered** by the default zones: neither has it. A gate that decides something around the hour that is skipped or repeated needs a zone that has it (`--zone Europe/Berlin`), and a test at such a moment.
+- **What the two zones are sure to find is a decision about the day.** A month or a year changes with the day only near its end: a test with a moment in the middle of a month passes in both. A decision about an hour of the day or a day of the week can come out the same in both zones and differ in one between them, and neither of the two has an offset of half an hour. For those, use a moment near the boundary in the test, and name the zones the gate is for: `--zone Asia/Tokyo --zone Asia/Kolkata`.
+- **A gate that reads the zone without naming `DateTime`** is left out: one that gets a date from another package and never names the class, in the gate, in its test, and in the files of the package the two reach. `--all` runs every gate. (Without a `pubspec.yaml` a `package:` import cannot be followed, and a gate that has one, or reaches a file that has one, is run.)
+
+| Exit code | Meaning                                                                    |
+| --------- | -------------------------------------------------------------------------- |
+| 0         | The tests pass in every zone, or no gate names `DateTime`                  |
+| 1         | The tests fail in a zone, a gate has no test, a zone is not known to the machine, the command cannot be started, or an entry of `test-gates.json` is wrong |
+| 2         | Wrong usage (a `--zone` that is no name of a zone), or an unusable `test-gates.json` |
+| 130 / 143 / 129 | Interrupted (SIGINT / SIGTERM / SIGHUP); the command was ended       |
 
 ## `test_gates mutation [--force] [--gate <path>] [--report <path>] [-- <options>]`
 
@@ -702,9 +811,9 @@ Measured with Dart 3.13.2 on a Mac with 12 logical processors, `--force`, one ru
 | Package                                    | Gates | Mutants                        | Full run (`--force`) | Test runs at a time |
 | ------------------------------------------ | ----- | ------------------------------ | -------------------- | ------------------- |
 | [`example/`](example)                      | 2     | 69, of which 2 do not compile  | 1 min 1 s            | 1, in place (it has a `path:` dependency) |
-| This package, its own gates                | 14    | 2552, of which 256 do not compile | about 23 min      | 3, in working copies (the default there) |
+| This package, its own gates                | 15    | 2664, of which 265 do not compile | about 24 min      | 3, in working copies (the default there) |
 
-Of the 2552 mutants of this package 2288 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
+Of the 2664 mutants of this package 2391 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
 
 A mutant that compiles costs one start of the test runner on the test of its gate. A second run without `--force` and without a change runs nothing but the timeouts.
 
@@ -881,6 +990,7 @@ What else changed: the lines per gate are printed by `dart_mutant`; on a machine
 | `forbiddenSource` defaults | `'use client'` / `'use server'`, `process.env` | reads of the environment, found in the syntax |
 | Tests + coverage in one command | `npm run test:gates` (a script the project writes) | `test_gates test` |
 | `gateCommand` | the gate: its exit code is the verdict | runs the tests and writes the tracefile; the verdict comes from the tracefile |
+| Tests in other time zones | none | `timezones` |
 | Negative control (`selfcheck`) | leaves out the test of a gate; one run per gate | appends unexecuted code to the gates; one run for all |
 | Mutation testing | `mutation` runs Stryker, `mutation-result` judges its JSON report | `mutation` runs `dart_mutant`, `mutation-result` judges its JSON report; the same report schema, the same judgement and allow list |
 | The mutation tool | a development dependency of the project (`@stryker-mutator/core`), with a configuration file (`stryker.gates.config.mjs`) | a program of its own (`dart pub global activate dart_mutant`), given a plan that `mutation` makes from `test-gates.json`; no configuration file |
@@ -900,7 +1010,7 @@ dart analyze --fatal-infos
 dart test
 ```
 
-The decisions live in `lib/src/` as pure functions (text in, verdict out): `manifest.dart`, `settings.dart`, `lcov.dart`, `selfcheck.dart`, `args.dart`, for `check` `dart_source.dart`, `scan.dart`, `import_policy.dart`, `spec_path.dart`, `gate_path.dart`, `pubspec.dart`, `json.dart`, and for `mutation` `mutation_run.dart` (how `dart_mutant` is started: the commands that are tried, the supported versions, the plan, the arguments, and which of its exit codes leave the verdict to the report) and `mutation_result.dart` (the judgement, a port of upstream's `mutation-result.ts` with its test cases). `dart_source.dart` is the only file that touches `package:analyzer`. Reading and writing files, starting processes and printing are in `lib/src/io/` and `lib/src/commands/`.
+The decisions live in `lib/src/` as pure functions (text in, verdict out): `manifest.dart`, `settings.dart`, `lcov.dart`, `selfcheck.dart`, `zones.dart`, `args.dart`, for `check` `dart_source.dart`, `scan.dart`, `import_policy.dart`, `spec_path.dart`, `gate_path.dart`, `pubspec.dart`, `json.dart`, and for `mutation` `mutation_run.dart` (how `dart_mutant` is started: the commands that are tried, the supported versions, the plan, the arguments, and which of its exit codes leave the verdict to the report) and `mutation_result.dart` (the judgement, a port of upstream's `mutation-result.ts` with its test cases). `dart_source.dart` is the only file that touches `package:analyzer`. Reading and writing files, starting processes and printing are in `lib/src/io/` and `lib/src/commands/`.
 
 The tests of `test`, `selfcheck` and `mutation` start processes: stand-ins for the coverage command and for `dart_mutant` (`test/fixtures/selfcheck/fake_coverage.dart.txt`, `test/fixtures/mutation/fake_dart_mutant.dart.txt`) and, in `test/commands/real_coverage_test.dart` and `real_mutation_test.dart`, `dart test` and `dart_mutant` itself on a small package that is copied to a temporary directory and resolved with `dart pub get --offline`. The test with `dart_mutant` is skipped where the tool is not installed, and fails there instead when `TEST_GATES_REQUIRE_DART_MUTANT=1` is set, as it is in the workflow.
 
@@ -912,6 +1022,7 @@ The pure files above are the gates of this package: [`test-gates.json`](test-gat
 dart run test_gates check             # under a second
 dart run test_gates test              # the whole test suite with coverage
 dart run test_gates selfcheck         # the same suite once more, with a probe in every gate
+dart run test_gates timezones         # the test of zones.dart, the one gate that names DateTime, in two zones
 dart run test_gates mutation          # only the gates that changed since the last run
 dart run test_gates mutation --gate lib/src/lcov.dart   # one gate, while working on it
 dart run test_gates mutation --force  # everything, before a release
