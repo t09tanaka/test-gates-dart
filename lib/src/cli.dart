@@ -8,6 +8,7 @@ import 'commands/mutation_result.dart';
 import 'commands/output.dart';
 import 'commands/selfcheck.dart';
 import 'commands/test.dart';
+import 'commands/timezones.dart';
 import 'manifest.dart';
 import 'version.dart';
 
@@ -21,6 +22,7 @@ Commands:
   check                       Static checks: the list, the tests, and that every gate is a pure module
   test [-- <command>]         Run the tests with coverage (settings.gateCommand), then lcov
   selfcheck [-- <command>]    Negative control: with unexecuted code in it, a gate must fail
+  timezones [-- <command>]    Run the tests of the gates that name DateTime in other time zones
   mutation [-- <options>]     Mutation test of the gates (or of --gate <path>): runs dart_mutant, then mutation-result
   mutation-result             Judge an existing mutation report (mutation-testing-elements JSON schema)
 
@@ -28,6 +30,9 @@ Options:
   --dir <package>             Directory that holds test-gates.json (default: .)
   --file <path>               lcov, test, selfcheck: tracefile (default: settings.lcov.file)
   --all | --first             selfcheck: every gate (default) or only the first
+  --all                       timezones: every gate, also one that does not name DateTime
+  --zone <name>               timezones: a time zone to run in (may be given more than once;
+                              default: Pacific/Kiritimati and Etc/GMT+12, the two ends)
   --report <path>             mutation, mutation-result: the report (default: settings.stryker.reportFile)
   --force                     mutation: run every mutant again, also of a gate unchanged since the last run
   --gate <path>               mutation, mutation-result: only this gate (may be given more than once)
@@ -40,7 +45,7 @@ Options:
 
 Exit codes: 0 passed, 1 violations found, 2 wrong usage or unusable test-gates.json
 (mutation: or dart_mutant is missing or not a supported version),
-130 / 143 / 129 interrupted by SIGINT / SIGTERM / SIGHUP (test, selfcheck, mutation)
+130 / 143 / 129 interrupted by SIGINT / SIGTERM / SIGHUP (test, selfcheck, timezones, mutation)
 ''';
 
 int _usage(UsageError error, Io io) {
@@ -78,6 +83,14 @@ Future<int> runAsync(List<String> argv, Io io) async {
             args.mode,
             args.rest,
             io,
+          );
+        case 'timezones':
+          return await runTimezones(
+            args.dir,
+            args.zones,
+            args.rest,
+            io,
+            all: args.mode == 'all',
           );
         case 'mutation':
           return await runMutation(
@@ -131,7 +144,7 @@ int run(List<String> argv, Io io) {
         only: args.gates,
         listNotEvaluable: args.notEvaluable,
       ),
-      'test' || 'selfcheck' || 'mutation' => throw StateError(
+      'test' || 'selfcheck' || 'timezones' || 'mutation' => throw StateError(
         '${args.command} waits for a process: call runAsync',
       ),
       _ => throw UsageError('no command given'),

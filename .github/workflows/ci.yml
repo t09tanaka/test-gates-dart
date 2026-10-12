@@ -44,6 +44,8 @@ jobs:
       - run: dart run test_gates check
       - run: dart run test_gates test
       - run: dart run test_gates selfcheck
+      # No gate of this package names DateTime: --all runs them all the same.
+      - run: dart run test_gates timezones --all
       # The package as a dependency of another one.
       - name: The example
         working-directory: example
@@ -51,10 +53,27 @@ jobs:
           dart run test_gates check
           dart run test_gates test
           dart run test_gates selfcheck
+          dart run test_gates timezones --all
       - name: The example, mutation test
         if: matrix.sdk == 'stable'
         working-directory: example
         run: dart run test_gates mutation --force
+
+  # `timezones` sets TZ for the tests it starts. That this moves the zone
+  # of a Dart program is checked on Linux by the job above, and here on
+  # macOS.
+  timezones-macos:
+    name: Time zones on macOS
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+      - run: dart pub get
+      - run: dart test test/commands/real_timezones_test.dart test/commands/timezones_test.dart
+      - run: dart run test_gates timezones --all
 
   # The mutation test, one job per gate. The list is read from
   # test-gates.json, so a gate that is added there is run here.

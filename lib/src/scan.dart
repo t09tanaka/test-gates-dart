@@ -258,6 +258,41 @@ List<Violation> _reached(
   return violations;
 }
 
+/// The files of the package that the gate at [gatePath] is made of: the gate
+/// and every file it reaches through its imports, exports and parts, as far
+/// as they can be read ([readSource] gives `null` for one that cannot). What
+/// `check` would report on the way is not looked at; a generated part is
+/// read here, because it is code of the gate all the same.
+///
+/// Path → content, the gate first.
+Map<String, String> gateSources(
+  String gatePath,
+  String source,
+  ResolvedSettings settings, {
+  String? packageName,
+  required String? Function(String path) readSource,
+}) {
+  final aliases = aliasesFor(packageName, settings.importAliases);
+  final sources = {gatePath: source};
+  final queue = [gatePath];
+  for (var index = 0; index < queue.length; index++) {
+    final path = queue[index];
+    for (final imported in parseDartSource(sources[path]!).imports) {
+      final target = resolveUri(imported.uri, path, aliases);
+      if (target == null || sources.containsKey(target)) {
+        continue;
+      }
+      final content = readSource(target);
+      if (content == null) {
+        continue;
+      }
+      sources[target] = content;
+      queue.add(target);
+    }
+  }
+  return sources;
+}
+
 /// Checks the text of a gate: it must be a pure module with no way to opt out
 /// of measurement.
 ///

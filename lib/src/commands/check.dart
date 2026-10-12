@@ -1,6 +1,8 @@
 import 'dart:io';
 
+import '../dart_source.dart';
 import '../gate_path.dart';
+import '../import_policy.dart';
 import '../io/files.dart';
 import '../manifest.dart';
 import '../pubspec.dart';
@@ -23,7 +25,14 @@ String _read(String dir, String relativePath) => readText(
 );
 
 /// Every static rule of the gates. Returns all violations, not just the first.
-List<Violation> checkGates(LoadedManifest manifest) {
+///
+/// The gates whose `package:` imports could not be told from imports of the
+/// package itself, because there is no pubspec.yaml that names the package,
+/// are added to [notFollowed].
+List<Violation> checkGates(
+  LoadedManifest manifest, {
+  List<String>? notFollowed,
+}) {
   final dir = manifest.dir;
   final settings = manifest.settings;
   final pubspec = _pubspec(dir);
@@ -102,15 +111,24 @@ List<Violation> checkGates(LoadedManifest manifest) {
       );
       continue;
     }
+    final source = _read(dir, path);
     violations.addAll(
       scanGateSource(
         path,
-        _read(dir, path),
+        source,
         settings,
         packageName: packageName,
         readSource: readSource,
       ),
     );
+    if (pubspec == null &&
+        parseDartSource(source).imports.any(
+          (imported) =>
+              imported.uri.startsWith('package:') &&
+              resolveUri(imported.uri, path, settings.importAliases) == null,
+        )) {
+      notFollowed?.add(path);
+    }
 
     final candidates = specCandidatesFor(path, settings);
     if (candidates.isEmpty) {
@@ -171,7 +189,17 @@ List<Violation> checkGates(LoadedManifest manifest) {
 /// [ManifestError] (exit code 2) when the manifest is unusable.
 int runCheck(String dir, Io io) {
   final manifest = readManifest(dir);
-  final violations = checkGates(manifest);
+  final notFollowed = <String>[];
+  final violations = checkGates(manifest, notFollowed: notFollowed);
+  if (notFollowed.isNotEmpty) {
+    // Not a violation: a directory of files without a pubspec is a way to
+    // use the checks. But what was not looked at is said.
+    io.out(
+      '$executable check: note: no pubspec.yaml here, so the "package:" '
+      'imports of ${notFollowed.join(', ')} were not followed: without the '
+      'name of the package, each is taken for an import of another package',
+    );
+  }
   if (violations.isNotEmpty) {
     printViolations(io, 'check', violations);
     return 1;

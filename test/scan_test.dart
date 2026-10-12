@@ -421,6 +421,107 @@ void main() {
     });
   });
 
+  group('gateSources: the files a gate is made of', () {
+    Map<String, String> sources(
+      String source,
+      Map<String, String> files, {
+      Map<String, Object?> settings = const {},
+      String? packageName = 'app',
+    }) => gateSources(
+      gate,
+      source,
+      resolveSettings(settings),
+      packageName: packageName,
+      readSource: (path) => files[path],
+    );
+
+    test('the gate alone', () {
+      expect(sources('int a() => 1;\n', {}), {gate: 'int a() => 1;\n'});
+    });
+
+    test('the gate first, then what it imports, exports and has as a part, '
+        'and what those bring in, each once', () {
+      const files = {
+        'lib/models/zone.dart': "import '../money.dart';\nexport 'a.dart';\n",
+        'lib/money.dart': "import 'models/zone.dart';\n",
+        'lib/models/a.dart': "part 'a.g.dart';\n",
+        'lib/models/a.g.dart': "part of 'a.dart';\n",
+        'lib/models/shipping_fee.g.dart': '// generated\n',
+        'lib/unused.dart': '',
+      };
+      const source =
+          "import 'zone.dart';\nimport 'package:app/money.dart';\n"
+          "part 'shipping_fee.g.dart';\nimport 'shipping_fee.dart';\n";
+      final found = sources(source, files);
+      expect(found.keys, [
+        gate,
+        'lib/models/zone.dart',
+        'lib/money.dart',
+        'lib/models/shipping_fee.g.dart',
+        'lib/models/a.dart',
+        'lib/models/a.g.dart',
+      ]);
+      expect(found[gate], source);
+      expect(found['lib/money.dart'], files['lib/money.dart']);
+    });
+
+    test('another package, the SDK and a file that cannot be read are left '
+        'out, and so is what is behind them', () {
+      expect(
+        sources(
+          "import 'dart:io';\nimport 'package:intl/intl.dart';\n"
+          "import 'gone.dart';\nimport 'zone.dart';\n",
+          {'lib/models/zone.dart': "import 'missing.dart';\n"},
+        ).keys,
+        [gate, 'lib/models/zone.dart'],
+      );
+    });
+
+    test('an import that check rejects is followed all the same', () {
+      expect(
+        sources(
+          "import 'fee_repository.dart';\n",
+          {'lib/models/fee_repository.dart': "import 'dart:io';\n"},
+          settings: {
+            'impureImports': {
+              'add': ['_repository'],
+              'allow': ['_repository'],
+            },
+          },
+        ).keys,
+        [gate, 'lib/models/fee_repository.dart'],
+      );
+    });
+
+    test('without the name of the package, package: is another '
+        'package; settings.importAliases are followed', () {
+      const files = {
+        'lib/money.dart': '',
+        'packages/shared/lib/clock.dart': '',
+      };
+      expect(
+        sources(
+          "import 'package:app/money.dart';\n",
+          files,
+          packageName: null,
+        ).keys,
+        [gate],
+      );
+      expect(
+        sources(
+          "import 'shared:clock.dart';\n",
+          files,
+          settings: {
+            'importAliases': [
+              {'prefix': 'shared:', 'target': 'packages/shared/lib/'},
+            ],
+          },
+        ).keys,
+        [gate, 'packages/shared/lib/clock.dart'],
+      );
+    });
+  });
+
   group('a pure module passes', () {
     test('a model with json_serializable', () {
       expect(

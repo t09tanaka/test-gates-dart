@@ -4,6 +4,7 @@ const commands = [
   'check',
   'test',
   'selfcheck',
+  'timezones',
   'mutation',
   'mutation-result',
 ];
@@ -17,8 +18,13 @@ class ParsedArgs {
   /// `--file` (lcov, test, selfcheck).
   String? file;
 
-  /// `--all` / `--first` (selfcheck).
+  /// `--all` / `--first` (selfcheck). `--all` (timezones): every gate, also
+  /// one that does not name `DateTime`.
   String? mode;
+
+  /// `--zone` (timezones), once per zone: the zones to run the tests in.
+  /// Empty means the built-in ones.
+  List<String> zones = const [];
 
   /// `--report` (mutation, mutation-result).
   String? report;
@@ -49,20 +55,21 @@ class UsageError implements Exception {
   String toString() => message;
 }
 
-const _valueOptions = ['--dir', '--file', '--report', '--gate'];
+const _valueOptions = ['--dir', '--file', '--report', '--gate', '--zone'];
 
 const _optionsByCommand = {
   'lcov': ['--dir', '--file'],
   'check': ['--dir'],
   'test': ['--dir', '--file'],
   'selfcheck': ['--dir', '--file', '--all', '--first'],
+  'timezones': ['--dir', '--all', '--zone'],
   'mutation': ['--dir', '--report', '--force', '--gate', '--not-evaluable'],
   'mutation-result': ['--dir', '--report', '--gate', '--not-evaluable'],
 };
 
 /// The commands that take something after `--`: a command to run, or (for
 /// mutation) the options that are handed to `dart_mutant run`.
-const _commandsWithRest = ['test', 'selfcheck', 'mutation'];
+const _commandsWithRest = ['test', 'selfcheck', 'timezones', 'mutation'];
 
 /// Reads the argument at [index] (and its value, when it is given
 /// separately) into [parsed]. Returns the index of the next argument to read.
@@ -77,7 +84,8 @@ int _consume(
   if (arg == '--') {
     if (!_commandsWithRest.contains(parsed.command)) {
       throw UsageError(
-        '"--" is only accepted by the test, selfcheck and mutation commands',
+        '"--" is only accepted by the test, selfcheck, timezones and '
+        'mutation commands',
       );
     }
     parsed.rest = argv.sublist(index);
@@ -142,6 +150,8 @@ int _consume(
     parsed.report = value;
   } else if (name == '--gate') {
     parsed.gates = [...parsed.gates, value];
+  } else if (name == '--zone') {
+    parsed.zones = [...parsed.zones, value];
   } else {
     parsed.file = value;
   }

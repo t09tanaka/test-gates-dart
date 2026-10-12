@@ -1,0 +1,8 @@
+/// The day of the month [moment] falls on, on the calendar of the machine
+/// that runs this. That is the mistake: the answer depends on where the
+/// machine is.
+int dayHere(DateTime moment) => moment.toLocal().day;
+
+/// The day of the month [moment] falls on, [offset] away from UTC. The
+/// offset is an input, so the answer is the same everywhere.
+int dayAt(DateTime moment, Duration offset) => moment.toUtc().add(offset).day;
