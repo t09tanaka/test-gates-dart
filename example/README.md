@@ -4,6 +4,7 @@ A package with two gates. `lib/bulk_discount.dart` and `lib/shipping_fee.dart` d
 
 ```bash
 dart pub get
+dart pub global activate dart_mutant   # once per machine: the tool that `mutation` starts
 dart run test_gates check       # the gates exist, have their tests, and are pure modules
 dart run test_gates test        # dart test with coverage: 100% lines and branches of the gates
 dart run test_gates selfcheck   # with unexecuted code in it, a gate fails
@@ -17,8 +18,8 @@ test_gates check: OK (2 gate(s), 1 candidate(s))
 Things to try:
 
 - Remove the test `never charges more than the maximum` from [`test/shipping_fee_test.dart`](test/shipping_fee_test.dart). `test` fails: the block that limits the fee is never executed (`2/3 branches taken`).
-- Remove the expectation for 50 items from [`test/bulk_discount_test.dart`](test/bulk_discount_test.dart). `test` still passes, at 100%: every line and block is executed by the other cases. `mutation` fails and names the change that nothing notices any more (`quantity >= 50` → `quantity > 50`).
+- Remove the expectation for 50 items from [`test/bulk_discount_test.dart`](test/bulk_discount_test.dart). `test` still passes, at 100%: every line and block is executed by the other cases. `mutation` fails and names the changes that nothing notices any more (`>=` → `>` and `50` → `51` in `quantity >= 50`).
 - Add `import 'dart:io';` to [`lib/shipping_fee.dart`](lib/shipping_fee.dart). `check` rejects it: a gate is a pure module.
-- Remove `equivalentMutants` from `test-gates.json`. `mutation` fails with the one mutant that no test can notice (`>` → `>=` where the fee is limited to the maximum), and prints the entry to put back.
+- Remove both `equivalentMutants` from `test-gates.json`. `mutation` fails with the two mutants that no test can notice (`>` → `>=` where the fee is limited to the maximum, and `50` → `51` where the discount is rounded), and prints the entries to put back.
 
 In a package of your own, `test_gates` is a development dependency from pub.dev (`dart pub add --dev test_gates`), not a path.

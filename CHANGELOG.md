@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.2.0 (not yet published)
+
+`test_gates mutation` no longer makes the mutants and runs the tests itself.
+It starts [`dart_mutant`](https://pub.dev/packages/dart_mutant) for that, as
+the npm package starts Stryker, and judges the report. The README has the
+steps under "Upgrading from 0.1".
+
+### Breaking
+
+- `mutation` needs `dart_mutant` 0.1.x (`dart pub global activate
+  dart_mutant`; Dart 3.11 or later). It is looked for on `PATH`, then as
+  `dart pub global run dart_mutant`. When it is missing, or is not a 0.1.x,
+  the exit code is 2 and nothing is run. The other commands run on Dart 3.9
+  as before.
+- What follows `--` on the command line of `mutation` is handed to
+  `dart_mutant run` (`--jobs <n>`, `--shard <i>/<n>`, `--schemata`,
+  `--html <file>`). It used to be the command that runs test files; that
+  command now goes behind a second `--` (`mutation -- -- fvm flutter test
+  --no-pub`), and the old form is refused with exit code 2. `--dir`, `--plan`,
+  `--report` and `--only` are refused behind `--`: `mutation` sets them.
+- More mutants, so new survivors are to be expected. The twelve mutators of
+  0.1 make the same mutants as before, and an `equivalentMutants` or
+  `expectedTimeouts` entry written for 0.1 still matches. `dart_mutant` also
+  has mutators that use resolved types (`MethodExpression`, `NumberLiteral`,
+  `ConstantNumberLiteral`, `GuardAlwaysTaken`, `GuardThrows`,
+  `GuardResultSwapped`, `BranchCopied`, `ReturnValue`). A survivor of those
+  fails the run like any other until a test detects it or the gate allows it
+  with a reason.
+- The exit code of `mutation` can be one of `dart_mutant`: 2 when it refused
+  its command line, and whatever else it ended with other than 0 and 1 (137
+  when the system killed it). Nothing is judged then.
+- `mutation-result` refuses the report of a part of a run (`dart_mutant run
+  --shard`) as a whole. Such a report has `config.shard`.
+- The results of the last run are those of `dart_mutant`
+  (`.dart_tool/dart_mutant/`). `.dart_tool/test_gates/mutation/` of 0.1 is no
+  longer read and can be deleted; a mutant that a killed run of 0.1 left in a
+  gate is not put back by 0.2.0.
+- The lines `mutation` printed per gate are now printed by `dart_mutant`, in
+  its format, and the report names `dart_mutant` as its `framework`.
+
+### Changed
+
+- `mutation` writes the gates and their tests as a plan file
+  (`.dart_tool/test_gates/mutation-plan.json`) and starts `dart_mutant run
+  --dir <package> --plan <plan> --report <report>`, with `--force` for
+  `--force` and `--only <path>` for each `--gate <path>`. The test command is
+  the one `dart_mutant` chooses (`flutter test --no-pub` or `dart test`);
+  `settings.gateCommand` is not used for it.
+- The verdict is that of the report, not of the exit code of `dart_mutant`.
+  With 0 or 1 the report is judged as `mutation-result` judges it. A gate
+  that is not in the report fails, and so does exit code 1 with a report in
+  which no mutant of the gates of the run survived and none is missing.
+- Before the tool is started, what an earlier report says about the gates of
+  the run is taken out of it, so that a run that writes nothing is not judged
+  on old results.
+- `mutation -- --shard <i>/<n>` runs a part and does not judge it: exit code
+  0 when the part was written with every gate of the run in it. The parts are
+  put together with `dart_mutant merge` and judged with `mutation-result`.
+- A signal (SIGINT, SIGTERM, SIGHUP) is handed to `dart_mutant` and to every
+  process that descends from it, and they are waited for (60 seconds at the
+  most) while the tool puts back what it changed.
+- With two jobs or more (`dart_mutant` decides; `-- --jobs <n>`), the gates
+  are not changed in place: the mutants are put into working copies.
+- `lcov`: the parser no longer trims the fields of a `DA:` / `BRDA:` / `LF:`
+  / `LH:` entry before it reads them as numbers. Blanks around a number are
+  read as before; the calls did nothing.
+
+### Removed
+
+- The mutation engine of 0.1: making the mutants, changing the gates in
+  place, the test runs, the time limits, the report writer, the file of
+  results of the last run and the recovery of a killed run. They are
+  `dart_mutant`'s now.
+
 ## 0.1.1 (2026-10-11)
 
 Documentation only; the commands behave as in 0.1.0.
