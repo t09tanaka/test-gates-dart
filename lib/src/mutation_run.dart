@@ -76,6 +76,9 @@ const _reserved = {
   '--only': '--gate',
 };
 
+/// The options with which the tool runs nothing and ends with exit code 0.
+const _noRun = ['--help', '-h', '--version', '-v'];
+
 /// What of [rest] (what follows `--` on the command line of `mutation`) is
 /// for the tool itself: everything in front of a second `--`. Behind that
 /// one is the command that runs test files.
@@ -98,6 +101,10 @@ String? passThroughProblem(List<String> rest) {
   }
   for (final argument in _ownOptions(rest)) {
     final name = _nameOf(argument);
+    if (_noRun.contains(name)) {
+      return '$name cannot be handed to $dartMutant run: the tool would '
+          'print its help or its version and run nothing';
+    }
     if (_reserved.containsKey(name)) {
       final own = _reserved[name];
       return '$name cannot be handed to $dartMutant run: mutation sets it '
@@ -197,6 +204,11 @@ bool explainsFailure(String? text, List<String> planned) {
   return false;
 }
 
+/// True when [text] is a mutation report: a JSON object with `files`. A
+/// file of another kind at the place of the report is not deleted or
+/// written over; the tool refuses to replace it.
+bool isReport(String text) => asObject(_decode(text)?['files']) != null;
+
 JsonObject? _decode(String? text) {
   if (text == null) {
     return null;
@@ -236,7 +248,7 @@ JsonObject _filesOf(String? text) =>
 ///
 /// The paths are compared as the judgement compares them, so the result of
 /// a selected gate is not kept under another spelling of its path
-/// (`./lib/a.dart`). Nothing is kept of a file that is not a report.
+/// (`./lib/a.dart`). [existing] is a report, see [isReport].
 String? reportWithout(String existing, List<String> selected) {
   final report = _decode(existing);
   final left = selected.map(normalizeReportPath).toSet();

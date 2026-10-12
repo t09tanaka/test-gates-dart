@@ -163,7 +163,7 @@ Future<void> _handOver(
   Duration grace,
   List<int> seen,
 ) async {
-  final descendants = {...seen, ..._descendantsOf(process.pid)}.toList();
+  var descendants = {...seen, ..._descendantsOf(process.pid)}.toList();
   if (signal != null) {
     process.kill(signal);
     for (final pid in descendants) {
@@ -175,11 +175,16 @@ Future<void> _handOver(
   final waited = Stopwatch()..start();
   while (waited.elapsed < grace) {
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    if (exited && _stillThere(descendants).isEmpty) {
+    // A process that has ended is not looked for again: its number can be
+    // given to another process, which is not ours to end.
+    descendants = _stillThere(descendants);
+    if (exited && descendants.isEmpty) {
       return;
     }
   }
-  process.kill(ProcessSignal.sigkill);
+  if (!exited) {
+    process.kill(ProcessSignal.sigkill);
+  }
   for (final pid in descendants) {
     Process.killPid(pid, ProcessSignal.sigkill);
   }

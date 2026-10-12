@@ -93,7 +93,7 @@
           "mutator": "ConstantNumberLiteral",
           "original": "512",
           "replacement": "513",
-          "reason": "How many bytes at the end of a file are searched for the probe. The probe has a fixed length of less than 200 bytes, so one byte more reads nothing else of it"
+          "reason": "How many bytes at the end of a file are searched for the probe. The probe has a fixed length of less than 200 bytes and is found from the end of the file, so it is inside the searched bytes either way and is found at the same place"
         },
         {
           "mutator": "ConstantNumberLiteral",

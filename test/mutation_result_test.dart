@@ -1332,13 +1332,38 @@ void main() {
       );
     });
 
+    test('a shard that does not say which part it is is a part all the '
+        'same', () {
+      for (final (config, part) in [
+        ({'shard': 'text'}, '?/?'),
+        ({'shard': <String, Object?>{}}, '?/?'),
+        (
+          {
+            'shard': {'index': 3},
+          },
+          '3/?',
+        ),
+        (
+          {
+            'shard': {'count': 4},
+          },
+          '?/4',
+        ),
+      ]) {
+        expect(parseMutationReport(partJson(config)).part, part);
+        expect(
+          messages(judgedPart(config)).single,
+          startsWith('mutation report: is part $part of a run'),
+        );
+      }
+    });
+
     test('a report without config.shard is the report of a whole run', () {
       for (final config in [
         null,
         {'mutatorsVersion': 2},
         {'shard': null},
         'text',
-        {'shard': 'text'},
       ]) {
         expect(parseMutationReport(partJson(config)).part, isNull);
         expect(judgedPart(config).violations, isEmpty, reason: '$config');

@@ -489,7 +489,7 @@ There is no setting that names the command. `test-gates.json` is the file upstre
 
 1. Finds the test of each gate the way [`check`](#test_gates-check) does: `lib/a/b.dart` → `lib/a/b_test.dart` and `test/a/b_test.dart` (`settings.spec`). Every one that exists is run on the mutants of the gate. A gate without a test, and a gate whose file is gone, fails, and is not given to the tool; with `"suffixes": []` that is every gate.
 2. Writes the gates and their tests as a plan file for the tool, `.dart_tool/test_gates/mutation-plan.json` (`.dart_tool` is ignored by git in every Dart project).
-3. Takes what the report of an earlier run says about these gates out of it (`settings.stryker.reportFile`, default `reports/mutation/mutation.json`; `--report <path>` for another place, relative to the package), and deletes the report when nothing is left. Whatever is judged in step 5 was then written by this run, also when the tool ends without writing anything.
+3. Takes what the report of an earlier run says about these gates out of it (`settings.stryker.reportFile`, default `reports/mutation/mutation.json`; `--report <path>` for another place, relative to the package), and deletes the report when nothing is left. (A file there that is not a mutation report is left as it is; `dart_mutant` refuses to replace it, with exit code 2.) Whatever is judged in step 5 was then written by this run, also when the tool ends without writing anything.
 4. Starts `dart_mutant run --dir <package> --plan <the plan> --report <the report>` in the package, with `--force` when `mutation` was given it, with `--only <path>` for every `--gate <path>`, and with what follows `--`. What the tool prints goes to the terminal as it is.
 5. Judges the report, see below.
 
@@ -507,6 +507,7 @@ dart run test_gates mutation --force -- --jobs 2 -- fvm flutter test --no-pub
 - **The command that runs test files** is the tool's to choose: `flutter test --no-pub` when the pubspec has a dependency from the Flutter SDK, and `dart test` otherwise. Another one goes behind a second `--`, as in the last line. `settings.gateCommand` is not used for it: that command collects coverage, which a test run on a mutant has no use for. So there is nothing to set twice.
 - The tool is started in the package, so a path behind `--` (`--html`) is relative to the package, like `--report` and `--file` of `test_gates`.
 - `--dir`, `--plan`, `--report` and `--only` are refused behind `--` (exit code 2): `mutation` sets them from `test-gates.json`, and with another value the tool would mutate other files than the gates, or write a report that is not the one that is judged. Give `--dir`, `--report` and `--gate` in front of `--`.
+- `--help` and `--version` are refused as well: the tool would run nothing.
 - Anything else that the tool does not know, it refuses itself, with exit code 2.
 
 ### Who decides whether the run passes
@@ -665,7 +666,7 @@ test_gates mutation: a part of a run (--shard) was written to part-1.json. It is
 - With one job, and for a package that cannot be run from a copy (a `path:` dependency outside the package, a pub workspace), the gates are changed **in place**, one mutant at a time, and put back after every test run. Do not edit a gate, commit, or switch branches while that runs. For a package that cannot be run from a copy the tool says so in its first line.
 - One run at a time in a package. A second one is turned away by the tool (exit code 1, nothing changed), and `mutation` then fails: the gates have no result.
 
-On **Ctrl-C (SIGINT), SIGTERM and SIGHUP** `mutation` hands the signal to the tool and to every process that descends from it (the executable on `PATH` is a script that starts the tool, and would not pass it on), and waits until they have ended: the tool ends its test runs, removes its copies or puts the gate back, and writes no report. `mutation` then exits with 130 / 143 / 129 and judges nothing. What is still there after 60 seconds is killed. On Windows, and where there is no `ps`, only the process that was started gets the signal.
+On **Ctrl-C (SIGINT), SIGTERM and SIGHUP** `mutation` hands the signal to the tool and to every process that descends from it (the executable on `PATH` is a script that starts the tool, and would not pass it on), and waits until they have ended: the tool ends its test runs, removes its copies or puts the gate back, and writes no report. `mutation` then exits with 130 / 143 / 129 and judges nothing. What is still there after 60 seconds is killed. Where there is no `ps`, only the process that was started gets the signal. On Windows no signal can be handed on: the process that was started is ended, and the tool behind it is not waited for.
 
 A run that is killed outright (SIGKILL, power loss) with one job leaves one mutant in one gate. The next run of the tool puts the gate back before it does anything else. Until then `git diff` shows the mutant.
 
@@ -676,9 +677,9 @@ Measured with Dart 3.13.2 on a Mac with 12 logical processors, `--force`, one ru
 | Package                                    | Gates | Mutants                        | Full run (`--force`) | Test runs at a time |
 | ------------------------------------------ | ----- | ------------------------------ | -------------------- | ------------------- |
 | [`example/`](example)                      | 2     | 69, of which 2 do not compile  | 1 min 1 s            | 1, in place (it has a `path:` dependency) |
-| This package, its own gates                | 14    | 2388, of which 248 do not compile | 15 min 24 s       | 3, in working copies (the default there) |
+| This package, its own gates                | 14    | 2414, of which 245 do not compile | about 15 min      | 3, in working copies (the default there) |
 
-Of the 2388 mutants of this package 2132 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
+Of the 2414 mutants of this package 2161 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
 
 A mutant that compiles costs one start of the test runner on the test of its gate. A second run without `--force` and without a change runs nothing but the timeouts.
 

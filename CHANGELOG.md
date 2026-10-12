@@ -19,6 +19,7 @@ steps under "Upgrading from 0.1".
   command now goes behind a second `--` (`mutation -- -- fvm flutter test
   --no-pub`), and the old form is refused with exit code 2. `--dir`, `--plan`,
   `--report` and `--only` are refused behind `--`: `mutation` sets them.
+  `--help` and `--version` are refused there as well.
 - More mutants, so new survivors are to be expected. The twelve mutators of
   0.1 make the same mutants as before, and an `equivalentMutants` or
   `expectedTimeouts` entry written for 0.1 still matches. `dart_mutant` also
@@ -53,7 +54,8 @@ steps under "Upgrading from 0.1".
   which no mutant of the gates of the run survived and none is missing.
 - Before the tool is started, what an earlier report says about the gates of
   the run is taken out of it, so that a run that writes nothing is not judged
-  on old results.
+  on old results. A file at that place that is not a mutation report is no
+  longer deleted (0.1 deleted it); `dart_mutant` refuses to replace it.
 - `mutation -- --shard <i>/<n>` runs a part and does not judge it: exit code
   0 when the part was written with every gate of the run in it. The parts are
   put together with `dart_mutant merge` and judged with `mutation-result`.

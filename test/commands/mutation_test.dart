@@ -568,11 +568,19 @@ void main() {
       );
     });
 
-    test('a file that is no report is deleted as well', () async {
-      package.write(reportFile, 'not a report');
-      tool({'report': everythingKilled});
-      expect(await mutation(), 0);
-      expect(package.file('report.before.json').existsSync(), isFalse);
+    test('a file that is no report is not deleted or written: the tool '
+        'refuses to replace it', () async {
+      for (final only in [
+        <String>[],
+        ['lib/a.dart'],
+      ]) {
+        package.write(reportFile, 'notes, not a report');
+        // As the tool answers a file of another kind.
+        tool({'exit': 2});
+        expect(await mutation(only: only), 2);
+        expect(package.read('report.before.json'), 'notes, not a report');
+        expect(package.read(reportFile), 'notes, not a report');
+      }
     });
   });
 

@@ -125,8 +125,10 @@ Future<int> runMutation(
   // A report of an earlier run must not be judged if this run writes none.
   // With --gate that holds for the gates of this run; what the report says
   // about the other gates is kept.
+  // A file of another kind is left alone: the tool refuses to replace it,
+  // and what it holds cannot pass for a result.
   final existing = _readOrNull(reportPath);
-  if (existing != null) {
+  if (existing != null && isReport(existing)) {
     final left = selected == null ? null : reportWithout(existing, selected);
     if (left == null) {
       File(reportPath).deleteSync();

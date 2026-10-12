@@ -134,10 +134,13 @@ MutationReport parseMutationReport(String text) {
     }
     files[path] = ReportFile(source: source as String?, mutants: mutants);
   }
-  final shard = asObject(asObject(root['config'])?['shard']);
+  final shard = asObject(root['config'])?['shard'];
+  final numbers = asObject(shard);
   return MutationReport(
     files,
-    part: shard == null ? null : '${shard['index']}/${shard['count']}',
+    part: shard == null
+        ? null
+        : '${numbers?['index'] ?? '?'}/${numbers?['count'] ?? '?'}',
   );
 }
 

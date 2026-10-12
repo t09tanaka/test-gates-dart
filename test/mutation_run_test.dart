@@ -142,6 +142,18 @@ void main() {
       );
     });
 
+    test('an option with which the tool runs nothing is refused', () {
+      for (final option in ['--help', '-h', '--version', '-v']) {
+        expect(
+          passThroughProblem(['--jobs', '2', option]),
+          '$option cannot be handed to dart_mutant run: the tool would print '
+          'its help or its version and run nothing',
+        );
+      }
+      expect(passThroughProblem(['--', 'dart', 'test', '-h', '-v']), isNull);
+      expect(passThroughProblem(['--helpful']), isNull);
+    });
+
     test('behind the second "--" is the test command, which may hold '
         'anything', () {
       expect(
@@ -419,6 +431,19 @@ void main() {
     });
   });
 
+  group('isReport', () {
+    test('a JSON object with files', () {
+      expect(isReport('{"files": {}}'), isTrue);
+      expect(isReport('{"schemaVersion": "2", "files": {"a": {}}}'), isTrue);
+    });
+
+    test('anything else is not', () {
+      for (final text in ['', 'notes', '[]', '{}', '{"files": []}', '7']) {
+        expect(isReport(text), isFalse, reason: text);
+      }
+    });
+  });
+
   group('reportWithout', () {
     final existing = jsonEncode({
       'schemaVersion': '2',
@@ -469,12 +494,6 @@ void main() {
         isNull,
       );
       expect(reportWithout('{"files": {}}', ['lib/a.dart']), isNull);
-    });
-
-    test('null for a file that is not a report', () {
-      for (final text in ['', 'not json', '[]', '{}', '{"files": 1}', '7']) {
-        expect(reportWithout(text, ['lib/a.dart']), isNull, reason: text);
-      }
     });
   });
 }
