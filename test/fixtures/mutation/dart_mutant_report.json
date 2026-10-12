@@ -1,0 +1,260 @@
+{
+  "schemaVersion": "2",
+  "thresholds": {
+    "high": 100,
+    "low": 100
+  },
+  "framework": {
+    "name": "dart_mutant",
+    "version": "0.1.0"
+  },
+  "config": {
+    "mutatorsVersion": 2
+  },
+  "files": {
+    "lib/steps.dart": {
+      "language": "dart",
+      "source": "/// The number of steps between two positions. A position below zero counts\n/// as zero.\nint steps(int from, int to) {\n  final first = from < 0 ? 0 : from;\n  final last = to < 0 ? 0 : to;\n  return (last - first).abs();\n}\n",
+      "mutants": [
+        {
+          "id": "lib/steps.dart#0",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "status": "Killed",
+          "duration": 1027,
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 17
+            },
+            "end": {
+              "line": 4,
+              "column": 25
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#1",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "status": "Survived",
+          "duration": 743,
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 17
+            },
+            "end": {
+              "line": 4,
+              "column": 25
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#2",
+          "mutatorName": "EqualityOperator",
+          "replacement": "<=",
+          "status": "Survived",
+          "duration": 716,
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 22
+            },
+            "end": {
+              "line": 4,
+              "column": 23
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#3",
+          "mutatorName": "EqualityOperator",
+          "replacement": ">=",
+          "status": "Killed",
+          "duration": 924,
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 22
+            },
+            "end": {
+              "line": 4,
+              "column": 23
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#4",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "true",
+          "status": "Killed",
+          "duration": 897,
+          "location": {
+            "start": {
+              "line": 5,
+              "column": 16
+            },
+            "end": {
+              "line": 5,
+              "column": 22
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#5",
+          "mutatorName": "ConditionalExpression",
+          "replacement": "false",
+          "status": "Survived",
+          "duration": 628,
+          "location": {
+            "start": {
+              "line": 5,
+              "column": 16
+            },
+            "end": {
+              "line": 5,
+              "column": 22
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#6",
+          "mutatorName": "EqualityOperator",
+          "replacement": "<=",
+          "status": "Survived",
+          "duration": 735,
+          "location": {
+            "start": {
+              "line": 5,
+              "column": 19
+            },
+            "end": {
+              "line": 5,
+              "column": 20
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#7",
+          "mutatorName": "EqualityOperator",
+          "replacement": ">=",
+          "status": "Killed",
+          "duration": 1019,
+          "location": {
+            "start": {
+              "line": 5,
+              "column": 19
+            },
+            "end": {
+              "line": 5,
+              "column": 20
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#8",
+          "mutatorName": "ArithmeticOperator",
+          "replacement": "+",
+          "status": "Killed",
+          "duration": 1013,
+          "location": {
+            "start": {
+              "line": 6,
+              "column": 16
+            },
+            "end": {
+              "line": 6,
+              "column": 17
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#9",
+          "mutatorName": "NumberLiteral",
+          "replacement": "1",
+          "status": "Survived",
+          "duration": 675,
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 24
+            },
+            "end": {
+              "line": 4,
+              "column": 25
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#10",
+          "mutatorName": "NumberLiteral",
+          "replacement": "1",
+          "status": "Survived",
+          "duration": 714,
+          "location": {
+            "start": {
+              "line": 4,
+              "column": 28
+            },
+            "end": {
+              "line": 4,
+              "column": 29
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#11",
+          "mutatorName": "NumberLiteral",
+          "replacement": "1",
+          "status": "Survived",
+          "duration": 739,
+          "location": {
+            "start": {
+              "line": 5,
+              "column": 21
+            },
+            "end": {
+              "line": 5,
+              "column": 22
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#12",
+          "mutatorName": "NumberLiteral",
+          "replacement": "1",
+          "status": "Survived",
+          "duration": 749,
+          "location": {
+            "start": {
+              "line": 5,
+              "column": 25
+            },
+            "end": {
+              "line": 5,
+              "column": 26
+            }
+          }
+        },
+        {
+          "id": "lib/steps.dart#13",
+          "mutatorName": "MethodExpression",
+          "replacement": "",
+          "status": "Survived",
+          "duration": 684,
+          "location": {
+            "start": {
+              "line": 6,
+              "column": 24
+            },
+            "end": {
+              "line": 6,
+              "column": 30
+            }
+          }
+        }
+      ]
+    }
+  }
+}

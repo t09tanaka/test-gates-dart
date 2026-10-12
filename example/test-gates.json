@@ -3,7 +3,16 @@
     {
       "path": "lib/bulk_discount.dart",
       "decides": "The price of a line of an order, in cents: the discount for a large quantity and how it is rounded",
-      "impact": "The customer is charged an amount other than the one that was shown"
+      "impact": "The customer is charged an amount other than the one that was shown",
+      "equivalentMutants": [
+        {
+          "mutator": "NumberLiteral",
+          "original": "50",
+          "replacement": "51",
+          "occurrence": 2,
+          "reason": "The 50 that rounds half a cent up. With 51 the result differs only when total * percent ends in 49, and a multiple of 5 or of 12 never does"
+        }
+      ]
     },
     {
       "path": "lib/shipping_fee.dart",

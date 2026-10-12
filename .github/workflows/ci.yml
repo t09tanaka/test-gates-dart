@@ -30,6 +30,14 @@ jobs:
       - run: dart pub get
       - run: dart format --output=none --set-exit-if-changed .
       - run: dart analyze --fatal-infos
+      # `mutation` starts dart_mutant, which needs a newer Dart than this
+      # package does: it is installed on stable only. There the test that
+      # runs the tool itself must not be skipped.
+      - name: Install dart_mutant
+        if: matrix.sdk == 'stable'
+        run: |
+          dart pub global activate dart_mutant '^0.1.0'
+          echo "TEST_GATES_REQUIRE_DART_MUTANT=1" >> "$GITHUB_ENV"
       - run: dart test
       # The gates of this package (test-gates.json). Which lines carry a
       # branch entry is decided by the SDK, so these run on both.
@@ -43,7 +51,10 @@ jobs:
           dart run test_gates check
           dart run test_gates test
           dart run test_gates selfcheck
-          dart run test_gates mutation --force
+      - name: The example, mutation test
+        if: matrix.sdk == 'stable'
+        working-directory: example
+        run: dart run test_gates mutation --force
 
   # The mutation test, one job per gate. The list is read from
   # test-gates.json, so a gate that is added there is run here.
@@ -74,6 +85,7 @@ jobs:
         with:
           sdk: stable
       - run: dart pub get
+      - run: dart pub global activate dart_mutant '^0.1.0'
       - run: dart run test_gates mutation --force --gate "$GATE"
         env:
           GATE: ${{ matrix.gate }}

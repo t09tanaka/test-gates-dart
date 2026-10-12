@@ -138,8 +138,9 @@ LcovReport parseLcov(String text, {List<String> rootDirs = const []}) {
       // A line outside a record: nothing to count.
     } else if (line.startsWith('DA:')) {
       final fields = line.substring(3).split(',');
-      final number = int.tryParse(fields[0].trim());
-      final count = fields.length < 2 ? null : num.tryParse(fields[1].trim());
+      // tryParse reads a number with blanks around it.
+      final number = int.tryParse(fields[0]);
+      final count = fields.length < 2 ? null : num.tryParse(fields[1]);
       if (number != null && count != null && count.isFinite) {
         open.hasDa = true;
         open.file.lines[number] = _max(open.file.lines[number], count);
@@ -148,10 +149,10 @@ LcovReport parseLcov(String text, {List<String> rootDirs = const []}) {
       }
     } else if (line.startsWith('BRDA:')) {
       final fields = line.substring(5).split(',');
-      final number = int.tryParse(fields[0].trim());
+      final number = int.tryParse(fields[0]);
       final taken = fields.length < 4
           ? null
-          : (fields[3].trim() == '-' ? 0 : num.tryParse(fields[3].trim()));
+          : (fields[3].trim() == '-' ? 0 : num.tryParse(fields[3]));
       if (number != null && taken != null && taken.isFinite) {
         hasBranchData = true;
         final key = '$number,${fields[1].trim()},${fields[2].trim()}';
@@ -161,9 +162,9 @@ LcovReport parseLcov(String text, {List<String> rootDirs = const []}) {
         malformed.add(lineNumber);
       }
     } else if (line.startsWith('LF:')) {
-      open.found = int.tryParse(line.substring(3).trim()) ?? 0;
+      open.found = int.tryParse(line.substring(3)) ?? 0;
     } else if (line.startsWith('LH:')) {
-      open.hit = int.tryParse(line.substring(3).trim()) ?? 0;
+      open.hit = int.tryParse(line.substring(3)) ?? 0;
     }
   }
   final unclosed = record != null;

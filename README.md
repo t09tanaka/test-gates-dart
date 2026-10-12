@@ -14,10 +14,10 @@ It is the Dart port of [`@t09tanaka/test-gates`](https://github.com/t09tanaka/te
 | `test_gates lcov`            | Every gate at 100% line coverage and 100% branch coverage                   |
 | `test_gates test`            | Runs the tests with coverage, then `lcov`. One command for a pre-push hook  |
 | `test_gates selfcheck`       | Negative control: with unexecuted code in it, a gate must fail              |
-| `test_gates mutation`        | Mutation test of the gates, with a per-mutant allow list                    |
-| `test_gates mutation-result` | Judges an existing mutation report (Stryker JSON schema)                    |
+| `test_gates mutation`        | Mutation test of the gates: runs `dart_mutant` and judges its report, with a per-mutant allow list |
+| `test_gates mutation-result` | Judges an existing mutation report (mutation-testing-elements JSON schema)  |
 
-100% coverage is only the floor. It proves that a test runs the code, not that the test checks the decision, and Dart's coverage is thin: an `if` without `else`, `a ? b : c`, `&&`, `||` and `??` tested on one side only are all 100% (see [Limitations](#limitations)). `mutation` closes that gap: it changes the gate, one small change at a time, and requires that a test notices.
+100% coverage is only the floor. It proves that a test runs the code, not that the test checks the decision, and Dart's coverage is thin: an `if` without `else`, `a ? b : c`, `&&`, `||` and `??` tested on one side only are all 100% (see [Limitations](#limitations)). `mutation` closes that gap: the gate is changed, one small change at a time, and a test has to notice each one.
 
 There is no overall threshold. The requirement is per gate, and it is 100%.
 
@@ -34,7 +34,7 @@ dart run test_gates --help
 
 ```yaml
 dev_dependencies:
-  test_gates: ^0.1.1
+  test_gates: ^0.2.0
 ```
 
 Or once per machine, outside of any package:
@@ -45,6 +45,14 @@ test_gates --help                 # needs ~/.pub-cache/bin on PATH
 ```
 
 The development dependency is the one to prefer: the version is in `pubspec.lock`, so everybody and CI run the same one. `test_gates` depends on `package:analyzer` with a wide range (`>=8.2.0 <15.0.0`) so that it resolves next to the code generators of an app. When it does not, the global activation is the way out: it has dependencies of its own.
+
+`test_gates mutation` starts [`dart_mutant`](https://pub.dev/packages/dart_mutant), which is installed once per machine and needs Dart 3.11 or later (see [Installing `dart_mutant`](#installing-dart_mutant)):
+
+```bash
+dart pub global activate dart_mutant
+```
+
+Coming from 0.1: [Upgrading from 0.1](#upgrading-from-01).
 
 ## Quick start
 
@@ -85,7 +93,7 @@ The development dependency is the one to prefer: the version is in `pubspec.lock
    dart run test_gates mutation    # do the tests check the decisions?
    ```
 
-   The test of `lib/shipping_fee.dart` is expected at `lib/shipping_fee_test.dart` or `test/shipping_fee_test.dart` ([`check`](#test_gates-check)). The first `mutation` usually finds survivors; see [Allowing an equivalent mutant](#allowing-an-equivalent-mutant) before allowing any.
+   The test of `lib/shipping_fee.dart` is expected at `lib/shipping_fee_test.dart` or `test/shipping_fee_test.dart` ([`check`](#test_gates-check)). `mutation` needs `dart_mutant` (`dart pub global activate dart_mutant`). The first `mutation` usually finds survivors; see [Allowing an equivalent mutant](#allowing-an-equivalent-mutant) before allowing any.
 
 3. Keep it that way. Before a push (`.git/hooks/pre-push`, or the hook manager of the project):
 
@@ -166,7 +174,7 @@ Problems are reported in two ways, as upstream does:
 | `imports.mode`          | `blocklist` | `allowlist` turns the import check around, see [Allowlist mode](#allowlist-mode) |
 | `imports.allow`         | none        | Libraries a gate may import in allowlist mode: `"package:decimal"`, `{ "pattern": "^package:acme_" }`, `{ "module": "package:intl/intl.dart", "names": ["NumberFormat"] }` |
 | `mutation.maxTimeouts`  | `0`         | Timeouts tolerated outside `expectedTimeouts`, see [Timeouts](#timeouts)     |
-| `stryker.reportFile`    | `reports/mutation/mutation.json` | Where `mutation` writes its report and `mutation-result` reads it. The key is upstream's, so that both tools accept the same file |
+| `stryker.reportFile`    | `reports/mutation/mutation.json` | Where `mutation` has the report written and `mutation-result` reads it. The key is upstream's, so that both tools accept the same file |
 
 `gateCommand` is started without a shell, so nothing in it is expanded or split: one array item is one argument. (Windows is the exception: `flutter` and `dart` are batch files there, so a shell starts them.) For a package without Flutter it is `["dart", "test", "--coverage-path=coverage/lcov.info", "--branch-coverage"]`. Upstream uses the same key for the command whose exit code is the verdict (`jest --config jest.gates.config.js`). Here the command only has to pass and write the tracefile named by `lcov.file`; the verdict comes from the tracefile. It must not call `test_gates lcov` itself.
 
@@ -390,7 +398,7 @@ What it does:
    int testGatesSelfcheckProbe5f0c9a1e() => 0;
    ```
 
-2. Runs `settings.gateCommand` **once**, with all probes in place. The time is that of one test run, whatever the number of gates (on a Flutter app with about 550 tests and 8 gates it took about as long as the tests on their own, a little over half a minute).
+2. Runs `settings.gateCommand` **once**, with all probes in place. The time is that of one test run, whatever the number of gates.
 3. Requires for each gate that the tracefile reports **the line of the probe** as a line that was not executed and as a branch that was not taken, and that the `lcov` judgement fails the gate. A gate that is red for another reason proves nothing, so "the gate failed" alone is not accepted.
 4. Takes the probes out again and puts back the tracefile that was there before the run (or deletes the one of the run): it counts the probes and would fail the next `test_gates lcov`.
 
@@ -425,107 +433,125 @@ The end of the file is a valid place in every Dart file: after all directives, s
 
 ### What it does not show
 
-Upstream's `selfcheck` leaves out the test of one gate and runs the gate again, once per gate. That also catches a gate whose coverage is held up by the test of another file. This `selfcheck` does not: it shows that the measurement reaches every gate and that the judgement reads it, not which test does the covering. That each gate has a test of its own is checked by [`check`](#test_gates-check), and that this test checks the decisions of the gate by [`mutation`](#test_gates-mutation---force---report-path----command), which runs only that test.
+Upstream's `selfcheck` leaves out the test of one gate and runs the gate again, once per gate. That also catches a gate whose coverage is held up by the test of another file. This `selfcheck` does not: it shows that the measurement reaches every gate and that the judgement reads it, not which test does the covering. That each gate has a test of its own is checked by [`check`](#test_gates-check), and that this test checks the decisions of the gate by [`mutation`](#test_gates-mutation---force---gate-path---report-path----options), which runs only that test.
 
-## `test_gates mutation [--force] [--report <path>] [-- <command>]`
+## `test_gates mutation [--force] [--gate <path>] [--report <path>] [-- <options>]`
 
-Mutation test of the gates. For each gate the tool makes **mutants** (the gate with one small change: `+` → `-`, a condition → `true`, a block emptied) and runs the test of the gate on each. A mutant that the tests notice is _killed_. One that passes them _survived_: the gate decides something there that no test checks.
+Mutation test of the gates. A **mutant** is a gate with one small change (`+` → `-`, a condition → `true`, `round()` → `floor()`). A mutant that the test of the gate notices is _killed_. One that passes it _survived_: the gate decides something there that no test checks.
+
+Two tools share the work, the way upstream's `mutation` and Stryker do:
+
+- [`dart_mutant`](https://pub.dev/packages/dart_mutant) makes the mutants and runs the tests on them. It is given files and their tests, and writes a report. It knows no list of gates and no allowance.
+- `test_gates` keeps the list and gives the verdict. `mutation` tells `dart_mutant` which files and which tests (the gates of `test-gates.json`), and judges its report as [`mutation-result`](#test_gates-mutation-result---report-path) does: which survivors are allowed, each with a reason, and that no gate and no mutant was left out.
 
 ```bash
+dart pub global activate dart_mutant   # once per machine
 dart run test_gates mutation
 ```
 
 ```
-  lib/bulk_discount.dart: 29 of 29 mutant(s) with "dart test --fail-fast --timeout 10s test/bulk_discount_test.dart"
-  lib/bulk_discount.dart: 29 mutants / killed 28 / survived 0 / timeout 0 / compile error 1 (26.6s)
-  lib/shipping_fee.dart: 15 of 15 mutant(s) with "dart test --fail-fast --timeout 10s test/shipping_fee_test.dart"
-  lib/shipping_fee.dart: 15 mutants / killed 13 / survived 1 / timeout 0 / compile error 1 (12.7s)
-test_gates mutation: OK (mutants 44 / detected 41 (timeout 0) / allowed equivalent 1 / not evaluable 2 / unallowed survivors 0)
+dart_mutant run: the dependency "test_gates" is at a path relative to the package (../../), so it cannot be run from working copies. The mutants are run one at a time, in place (--jobs 1)
+  lib/bulk_discount.dart: 44 of 45 mutant(s) with "dart test --fail-fast --timeout 10s test/bulk_discount_test.dart" (1 do not compile)
+  lib/bulk_discount.dart: 45 mutants / killed 43 / survived 1 / timeout 0 / compile error 1 (1 found before the run) (40.1s)
+  lib/shipping_fee.dart: 23 of 24 mutant(s) with "dart test --fail-fast --timeout 10s test/shipping_fee_test.dart" (1 do not compile)
+  lib/shipping_fee.dart: 24 mutants / killed 22 / survived 1 / timeout 0 / compile error 1 (1 found before the run) (19.6s)
+dart_mutant run: 2 surviving mutant(s)
+  - lib/bulk_discount.dart:19:39 / NumberLiteral / 50 → 51 (Survived)
+  - lib/shipping_fee.dart:14:11 / EqualityOperator / > → >= (Survived)
+dart_mutant run: FAILED (69 mutants / killed 65 / survived 2 / timeout 0 / compile error 2 (2 found before the run))
+test_gates mutation: OK (mutants 69 / detected 65 (timeout 0) / allowed equivalent 2 / not evaluable 2 / unallowed survivors 0)
 ```
 
-What it does, gate by gate:
+(The outputs on this page are those of [`example/`](example). It has `test_gates` as a `path:` dependency, which is what the first line is about; a package of your own gets it from pub.dev.)
 
-1. Finds the test of the gate the way [`check`](#test_gates-check) does: `lib/a/b.dart` → `lib/a/b_test.dart` and `test/a/b_test.dart` (`settings.spec`). Every one that exists is run. A gate without a test fails; with `"suffixes": []` there is nothing to run, so every gate fails.
-2. Parses the gate with `package:analyzer` and makes the mutants from the syntax tree (see [Mutators](#mutators)). A comment or a string that holds an operator is never changed, and no mutant is a syntax error.
-3. Runs the tests once without a mutant. They must pass, within 10 minutes; otherwise nothing is measured for this gate and it fails.
-4. Puts each mutant in the file, runs the tests, and takes it out again. Only the tests of the gate are run, so the time for one mutant is that of starting the test runner on one file.
-5. Writes the report (`settings.stryker.reportFile`, default `reports/mutation/mutation.json`; `--report <path>` for another place) and judges it as [`mutation-result`](#test_gates-mutation-result---report-path) does. A report of an earlier run is deleted first, so a run that writes none cannot pass on old results.
+The lines of `dart_mutant` come first, as it prints them. To that tool a survivor is a failure, so it ends with `FAILED`; the last line is the verdict of `test_gates`, which knows that the gates allow these two (see [Allowing an equivalent mutant](#allowing-an-equivalent-mutant)).
 
-The test command is `flutter test --no-pub` when the pubspec has a dependency from the Flutter SDK (run `flutter pub get` first), and `dart test` otherwise. A command after `--` replaces it (`-- fvm flutter test --no-pub`); `--fail-fast --timeout 10s` and the test files are appended to it, so it has to be a `dart test` / `flutter test` of some kind. It is started without a shell, like `gateCommand`.
+### Installing `dart_mutant`
 
-| Status of a mutant | When                                                                    |
-| ------------------ | ----------------------------------------------------------------------- |
-| `Killed`           | The test run failed                                                     |
-| `Survived`         | The test run passed                                                     |
-| `Timeout`          | The test run did not end within its limit, see [Timeouts](#timeouts)    |
-| `CompileError`     | The mutant does not compile (the output has the compiler's `file.dart:12:3: Error:` or `Compilation failed`). Nothing was evaluated |
+```bash
+dart pub global activate dart_mutant
+```
 
-| Exit code | Meaning                                                                    |
-| --------- | -------------------------------------------------------------------------- |
-| 0         | Every mutant is detected, allowed as equivalent, or does not compile       |
-| 1         | A survivor without an allowance, a timeout nobody explained, a stale allowance, a gate that could not be mutation tested, a wrong entry of `test-gates.json`, or the run had to stop |
-| 2         | Wrong usage, or an unusable `test-gates.json`                              |
-| 130 / 143 / 129 | Interrupted (SIGINT / SIGTERM / SIGHUP); the gates were put back     |
+`dart_mutant` is a program of its own, not a dependency of your package: it needs a narrow range of `package:analyzer`, which would have to resolve next to the code generators of an app. It runs on Dart 3.11 or later (`test_gates` itself on 3.9), and the package has to be resolved (`dart pub get` / `flutter pub get`).
+
+`mutation` tries these commands, in this order, and uses the first that answers `--version` with a version:
+
+1. `dart_mutant` on `PATH`. That is where `dart pub global activate` puts it when `~/.pub-cache/bin` is on `PATH`.
+2. `dart pub global run dart_mutant`, with the `dart` that runs `test_gates`.
+
+When neither does, the exit code is 2, and the message has the command above.
+
+**This version works with `dart_mutant` 0.1.x.** The version is asked for before every run, and any other is refused with exit code 2 before anything is run or changed: another version may make other mutants of the same source, and then the allowances of `test-gates.json` no longer mean what they meant. Where the newest version must not be taken unseen (CI), give the range: `dart pub global activate dart_mutant '^0.1.0'`.
+
+There is no setting that names the command. `test-gates.json` is the file upstream reads as well, and upstream refuses a key it does not know. To use another build of the tool, put an executable called `dart_mutant` first on `PATH`.
+
+### What it does
+
+1. Finds the test of each gate the way [`check`](#test_gates-check) does: `lib/a/b.dart` → `lib/a/b_test.dart` and `test/a/b_test.dart` (`settings.spec`). Every one that exists is run on the mutants of the gate. A gate without a test, and a gate whose file is gone, fails, and is not given to the tool; with `"suffixes": []` that is every gate.
+2. Writes the gates and their tests as a plan file for the tool, `.dart_tool/test_gates/mutation-plan.json` (`.dart_tool` is ignored by git in every Dart project).
+3. Takes what the report of an earlier run says about these gates out of it (`settings.stryker.reportFile`, default `reports/mutation/mutation.json`; `--report <path>` for another place, relative to the package), and deletes the report when nothing is left. (A file there that is not a mutation report is left as it is; `dart_mutant` refuses to replace it, with exit code 2.) Whatever is judged in step 5 was then written by this run, also when the tool ends without writing anything.
+4. Starts `dart_mutant run --dir <package> --plan <the plan> --report <the report>` in the package, with `--force` when `mutation` was given it, with `--only <path>` for every `--gate <path>`, and with what follows `--`. What the tool prints goes to the terminal as it is.
+5. Judges the report, see below.
+
+### What follows `--` is for `dart_mutant`
+
+It is handed to `dart_mutant run` as it is, like upstream hands what it does not know to Stryker. The options are described in [the README of `dart_mutant`](https://pub.dev/packages/dart_mutant):
+
+```bash
+dart run test_gates mutation -- --jobs 3                 # test runs at a time, in working copies of the package
+dart run test_gates mutation -- --html reports/mutation/mutation.html
+dart run test_gates mutation -- --shard 1/4              # a part of the run, see below
+dart run test_gates mutation --force -- --jobs 2 -- fvm flutter test --no-pub
+```
+
+- **The command that runs test files** is the tool's to choose: `flutter test --no-pub` when the pubspec has a dependency from the Flutter SDK, and `dart test` otherwise. Another one goes behind a second `--`, as in the last line. `settings.gateCommand` is not used for it: that command collects coverage, which a test run on a mutant has no use for. So there is nothing to set twice.
+- The tool is started in the package, so a path behind `--` (`--html`) is relative to the package, like `--report` and `--file` of `test_gates`.
+- `--dir`, `--plan`, `--report` and `--only` are refused behind `--` (exit code 2): `mutation` sets them from `test-gates.json`, and with another value the tool would mutate other files than the gates, or write a report that is not the one that is judged. Give `--dir`, `--report` and `--gate` in front of `--`.
+- `--help` and `--version` are refused as well: the tool would run nothing.
+- Anything else that the tool does not know, it refuses itself, with exit code 2.
+
+### Who decides whether the run passes
+
+The exit code of `dart_mutant` is not the verdict. It ends with 1 for a survivor that the gate allows, and with 0 when a gate was never part of the run.
+
+| `dart_mutant` ends with | `mutation` does |
+| ----------------------- | --------------- |
+| 0 or 1                  | Judges the report with the rules of [`mutation-result`](#test_gates-mutation-result---report-path). A gate that is not in the report fails (the tool leaves out a file it could not mutation test: its tests fail without a mutant, say, and it has printed why). So does exit code 1 with a report in which no mutant of these gates survived and none is missing: the tool failed at something the report does not show |
+| 2                       | Exit code 2. The tool refused its command line and ran nothing |
+| 130 / 143 / 129         | The same exit code. The tool was interrupted, and has put back what it changed |
+| anything else           | The same exit code; for a process that a signal ended, 128 + the number of the signal (137 when the system killed it for its memory). Nothing is judged |
+
+| Exit code of `mutation` | Meaning                                                              |
+| ----------------------- | -------------------------------------------------------------------- |
+| 0                       | Every mutant is detected, allowed as equivalent, or does not compile |
+| 1                       | A survivor without an allowance, a timeout nobody explained, a stale allowance, a gate that could not be mutation tested or is missing from the report, a mutant that was not evaluated, or a wrong entry of `test-gates.json` |
+| 2                       | Wrong usage, an unusable `test-gates.json`, `dart_mutant` is not installed or is not a supported version, or it refused its command line |
+| 130 / 143 / 129         | Interrupted (SIGINT / SIGTERM / SIGHUP)                              |
+| anything else           | `dart_mutant` ended with it, see above                               |
 
 ### Mutators
 
-The names are Stryker's where Stryker has the same mutator. They are part of the key of an allowance.
+The mutants, their names and the statuses are those of `dart_mutant`; [its README](https://pub.dev/packages/dart_mutant) has the tables. The name of the mutator is part of the key of an allowance.
 
-| Mutator                 | Change                                                                                  |
-| ----------------------- | --------------------------------------------------------------------------------------- |
-| `ArithmeticOperator`    | `+` ↔ `-`, `*` ↔ `/`, `%` → `*`, `~/` → `*`                                              |
-| `EqualityOperator`      | `<` → `<=`, `>=`; `<=` → `<`, `>`; `>` → `>=`, `<=`; `>=` → `>`, `<`; `==` ↔ `!=`        |
-| `LogicalOperator`       | `&&` ↔ `\|\|`; `a ?? b` → `b`                                                            |
-| `ConditionalExpression` | The condition of `if`, `? :` and a collection `if` → `true` and `false`; of `while`, `do` and `for` → `false` only |
-| `BooleanLiteral`        | `true` ↔ `false`; `!a` → `a`                                                             |
-| `UnaryOperator`         | `-a` → `a`                                                                               |
-| `UpdateOperator`        | `++` ↔ `--`                                                                              |
-| `AssignmentOperator`    | `+=` ↔ `-=`, `*=` ↔ `/=`, `%=` → `*=`, `~/=` → `*=`, `??=` → `=`                         |
-| `BlockStatement`        | `{ … }` → `{}`                                                                           |
-| `RemoveCall`            | A call whose result is not used (`save(x);`, `await sync();`) → `;`. Not in Stryker      |
-| `StringLiteral`         | `'text'` → `''`, `''` → `'mutated'`, a string with `${…}` → `''`                         |
-| `ArrayDeclaration`      | `[a, b]` → `[]`                                                                          |
+- **From the syntax tree:** `ArithmeticOperator`, `EqualityOperator`, `LogicalOperator`, `ConditionalExpression`, `BooleanLiteral`, `UnaryOperator`, `UpdateOperator`, `AssignmentOperator`, `BlockStatement`, `RemoveCall`, `StringLiteral`, `ArrayDeclaration`. These are the mutators `test_gates` 0.1 had itself, and for the same source they give the same mutants: an allowance written for 0.1 still matches.
+- **From resolved types:** `MethodExpression` (`round` → `floor`, `first` → `last`, `x.abs()` → `x`, …), `NumberLiteral` and `ConstantNumberLiteral` (`n` → `n + 1`, `n - 1`), `GuardAlwaysTaken`, `GuardThrows`, `GuardResultSwapped`, `BranchCopied`, `ReturnValue`.
 
-Left alone: annotations, `import` / `export` / `part` / `library` directives, `assert`, and a block that holds assertions only. `if (x case …)` is not given a condition mutant.
+A mutant that does not compile is found by the analyzer before a test is run. It is a `CompileError`: not a detection and not a failure. The summary counts it as `not evaluable`, so that a gate whose mutants mostly do not compile is visible.
 
 There is no way to switch a mutator off, and no comment that hides a mutant (upstream rejects Stryker's `excludedMutations` and `// Stryker disable` for the same reason). A mutant that cannot be observed is allowed one by one, with a reason, in `test-gates.json`.
 
-**Mutants that cannot compile.** Dart is null-safe and statically typed, so many textbook mutants are not programs. The ones the syntax gives away are not made:
-
-- The emptied body of a function that has to return a value (`int f() { return 1; }` → `{}`), and the emptied last block on one of its paths (`if (a) { return 1; } else { return 2; }` as its last statement). A function without a declared return type counts as returning a value when it has a `return <value>`.
-- An arithmetic operator next to a string literal (`'a' + b`, `s += 'x'`). Between two `String` variables nothing in the syntax says so: `s += t` gets `-=`, a compile error.
-- The same change twice: a condition that is a literal (`while (true)`) is left to `BooleanLiteral`, and a call that is the only statement of a block to `BlockStatement`.
-- The one mutant that is equivalent by construction: an emptied block that only says `return;` or `return null;` at the end of a function.
-- A condition that tests for `null` or with `is` is not replaced by `true` / `false` but by `(c) || true` / `(c) && false`: `if (x != null) { x.y }` → `if (true) { x.y }` loses the type promotion, `if ((x != null) && false) { x.y }` keeps it.
-
-What is left is found by compiling: nothing is resolved here, so `*` → `/` on two `int`s (the result is a `double`), a flipped null test before code that relies on it, or `if ((x == null) || true) return;` before a use of `x` are made, fail to compile in about a second, and are counted as `CompileError`. They do not fail the run and they are not a detection either: the summary shows them as `not evaluable`, so that a gate whose mutants mostly do not compile is visible. Measured: about one mutant in ten in two Flutter apps, and 279 of 2284 on the 15 gates of this package. Nearly all of them are null tests.
-
 ### Timeouts
 
-Two limits, both fixed:
-
-- **A test gets 10 seconds** (`--timeout 10s`, where the test runner's default is 30). A mutant that makes a test wait for something that never comes (a stream that no longer emits) fails that test: `Killed`. With `--fail-fast` the run ends at the first failing test.
-- **The test run of one mutant gets three times the duration of the run without a mutant, plus 20 seconds.** Only a mutant that keeps the process from ending gets this far: a loop that never yields, so that no timer can fire. It is ended together with the processes it started (found with `ps`; on Windows, and where there is no `ps`, only the test runner itself is ended), and is a `Timeout`.
-
-They are not settings. A limit that depends on the machine is what makes a timeout appear on one run and not on the next, and upstream changed its default once on a guess and had to take it back (0.3.1 → 0.3.2). A test of a gate that needs more than 10 seconds fails the run without a mutant; a gate is a pure module, and its test should not.
+The limits are those of `dart_mutant`, and they are not settings: a test gets 10 seconds, and the test run of one mutant three times the run without a mutant plus 20 seconds. Only a mutant that keeps the process from ending gets that far (a loop that never yields), and is a `Timeout`; so is a test run that takes more memory than its limit.
 
 A `Timeout` counts as detected, but an unexplained one fails the run. The rules are upstream's:
 
-- `expectedTimeouts` (per gate): mutants that can never finish. Same key as `equivalentMutants` (`mutator` + `original` + `replacement`, `occurrence` when ambiguous, `reason` required). An entry whose mutant survived, or does not exist, fails the run. Any other status is accepted, `Killed` included: which of the two limits fires first can depend on the load.
+- `expectedTimeouts` (per gate): mutants that can never finish. Same key as `equivalentMutants` (`mutator` + `original` + `replacement`, `occurrence` when ambiguous, `reason` required). An entry whose mutant survived, or does not exist, fails the run. Any other status is accepted, `Killed` included: which limit is reached first can depend on the load.
 - `settings.mutation.maxTimeouts`: how many timeouts outside `expectedTimeouts` are tolerated, default `0`.
-
-A `Timeout` is never taken from the last run: it is measured again every time.
 
 ### Results of the last run, and `--force`
 
-The first run tests every mutant. After that a gate is run again only when something that decides its result changed:
-
-- the gate,
-- its test files (which ones, and their content),
-- the test command,
-- the version of this package, or of its mutators.
-
-The results are kept in `.dart_tool/test_gates/mutation/incremental.json` (`.dart_tool` is ignored by git in every Dart project; `flutter clean` removes it, and the next run is a full one). The judgement is always made again, on the current `test-gates.json`, so removing an allowance fails the next run without anything being tested.
+`dart_mutant` keeps the results of its last run (`.dart_tool/dart_mutant/incremental.json`) and runs a gate again only when the gate, its tests, the test command or the tool changed. A `Timeout` is measured again every time. The judgement is always made again, on the current `test-gates.json`, so removing an allowance fails the next run without anything being tested.
 
 **A file that the gate imports is not part of this.** When `lib/order_total.dart` is unchanged and `lib/shipping_fee.dart`, which it calls, changed, the results of `order_total.dart` are reused as they are. The same goes for a helper that the test imports, for `pubspec.lock`, and for the SDK. `--force` tests everything:
 
@@ -534,22 +560,28 @@ The results are kept in `.dart_tool/test_gates/mutation/incremental.json` (`.dar
 
 ### One gate at a time: `--gate`
 
-`--gate <path>` limits the run to one gate: only its mutants are made and run, and only that gate is judged. The option may be given more than once, and goes together with `--force`.
+`--gate <path>` limits the run to one gate: only that gate is in the plan, the tool is given `--only <path>`, and only that gate is judged. The option may be given more than once, and goes together with `--force`.
 
 ```bash
 dart run test_gates mutation --gate lib/shipping_fee.dart
 dart run test_gates mutation --force --gate lib/shipping_fee.dart --gate lib/bulk_discount.dart
 ```
 
+After the full run above (the results of the gate are taken from it):
+
 ```
-test_gates mutation: OK for 1 of 2 gate(s) (--gate) (mutants 15 / detected 13 (timeout 0) / allowed equivalent 1 / not evaluable 1 / unallowed survivors 0)
+dart_mutant run: the dependency "test_gates" is at a path relative to the package (../../), so it cannot be run from working copies. The mutants are run one at a time, in place (--jobs 1)
+  lib/shipping_fee.dart: 24 mutants / killed 22 / survived 1 / timeout 0 / compile error 1 (1 found before the run) (24 from the last run, 0.0s)
+dart_mutant run: 1 surviving mutant(s)
+  - lib/shipping_fee.dart:14:11 / EqualityOperator / > → >= (Survived)
+dart_mutant run: FAILED (24 mutants / killed 22 / survived 1 / timeout 0 / compile error 1 (1 found before the run))
+test_gates mutation: OK for 1 of 2 gate(s) (--gate) (mutants 24 / detected 22 (timeout 0) / allowed equivalent 1 / not evaluable 1 / unallowed survivors 0)
 ```
 
 - The path is the one in `test-gates.json`, as it is written there. A path that is not a gate is wrong usage (exit code 2): a typo must not become a run that tests nothing.
 - For the gates it names, the run fails for the same reasons as a full run: a survivor, a stale allowance, a timeout nobody explained, a gate without a test. Nothing is said about the mutants, the tests or the allowances of the other gates. (A wrong entry of `test-gates.json` still stops every run, whichever gate it is in: the file is one, and it is checked before anything is run.) **The last line says how many gates were judged**; `OK for 1 of 2 gate(s)` is not a pass of the project.
 - `settings.mutation.maxTimeouts` is counted within the run, so with a value above `0` several runs can each stay below a limit that the full run would exceed.
-- The report keeps what it says about the other gates, and gets the new result of the named ones. After a full run and a `--gate` run it is still a report of all gates. Before the first mutant is tried, the old result of the named gates is taken out of it, so a run that is stopped does not leave it behind.
-- The results of the last run of the other gates stay where they are, with `--force` as well: `--force --gate a` runs every mutant of `a` again and forgets nothing about `b`.
+- The report keeps what it says about the other gates, and gets the new result of the named ones. After a full run and a `--gate` run it is still a report of all gates.
 - `mutation-result --gate <path>` judges the same gates of an existing report.
 
 It is for two things: working on one gate (the survivors of that gate, without the minutes of the others), and CI, where each gate can be a job of its own. A matrix made from `test-gates.json` cannot forget a gate that is added later:
@@ -576,6 +608,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
       - run: dart pub get
+      - run: dart pub global activate dart_mutant '^0.1.0'
       - run: dart run test_gates mutation --force --gate "$GATE"
         env:
           GATE: ${{ matrix.gate }}
@@ -595,36 +628,64 @@ jobs:
 
 **Before a push, and before a release, run without `--gate`.** Only the full run says that every gate passes, and only it notices a gate that no job was started for.
 
+### A run in several parts: `--shard`
+
+One gate with many mutants, or with slow tests, can be divided over several machines: `-- --shard <i>/<n>` has `dart_mutant` run part `i` of `n` of the mutants of each gate.
+
+```bash
+dart run test_gates mutation --force --report part-1.json -- --shard 1/2
+dart run test_gates mutation --force --report part-2.json -- --shard 2/2
+dart pub global run dart_mutant merge part-1.json part-2.json --report reports/mutation/mutation.json
+dart run test_gates mutation-result
+```
+
+The first of these lines prints:
+
+```
+dart_mutant run: the dependency "test_gates" is at a path relative to the package (../../), so it cannot be run from working copies. The mutants are run one at a time, in place (--jobs 1)
+  lib/bulk_discount.dart: 22 of 45 mutant(s) with "dart test --fail-fast --timeout 10s test/bulk_discount_test.dart" (1 do not compile)
+  lib/bulk_discount.dart: 23 of 45 mutants / killed 22 / survived 0 / timeout 0 / compile error 1 (1 found before the run) (20.8s)
+  lib/shipping_fee.dart: 12 of 24 mutant(s) with "dart test --fail-fast --timeout 10s test/shipping_fee_test.dart"
+  lib/shipping_fee.dart: 12 of 24 mutants / killed 11 / survived 1 / timeout 0 / compile error 0 (10.4s)
+dart_mutant run: 1 surviving mutant(s)
+  - lib/shipping_fee.dart:14:11 / EqualityOperator / > → >= (Survived)
+dart_mutant run: FAILED (shard 1/2: 35 of 69 mutants / killed 33 / survived 1 / timeout 0 / compile error 1 (1 found before the run))
+test_gates mutation: a part of a run (--shard) was written to part-1.json. It is not judged: put the parts together with "dart_mutant merge" and judge the result with "test_gates mutation-result"
+```
+
+- **A part is not judged.** Its report lists every mutant, and the ones of the other parts were not evaluated. `mutation` ends with 0 when the part was written and has every gate of the run in it, and says that it judged nothing. A survivor in the part does not change that: whether it is allowed is decided when all parts are there.
+- `dart_mutant merge` puts the parts together and refuses them when they are not all the parts of one run. Its exit code is 1 when a mutant survived; the verdict is that of `mutation-result` on the report it writes.
+- `mutation-result` refuses the report of a part as a whole (and a mutant with the status `Pending` in any report), so a part that is given to it by mistake cannot pass.
+- Two parts cannot run at the same time in one checkout: `dart_mutant` runs one at a time in a package. One after the other, as above, they can; side by side each needs a checkout of its own (the jobs of a CI workflow).
+
 ### Your files during the run
 
-`mutation` changes the gates **in place**, one mutant at a time, one gate at a time. Do not edit a gate, commit, or switch branches while it runs.
+`test_gates` writes the plan file, and changes the report as described above. Everything else is done by `dart_mutant`, and [its README](https://pub.dev/packages/dart_mutant) says how:
 
-- Before the first mutant goes into a gate, the gate is copied to `.dart_tool/test_gates/mutation/backup/<path>`. Every mutant, and the original after it, is put in place by writing a file next to the backups and renaming it over the gate, so the gate is never half-written. The bytes are put back as they were (line ends, a byte order mark).
-- The mutant is taken out after every test run, when the tool itself throws, and on **Ctrl-C (SIGINT), SIGTERM and SIGHUP** (Windows delivers only the first): the test run is ended first, with the processes it started, then the gate is put back, then the tool exits with 130 / 143 / 129 and writes no report.
-- A run that is killed outright (SIGKILL, power loss) leaves one mutant in one gate. The next `mutation` puts the gate back from the backup before it does anything else, and says so. Until then `git diff` shows the mutant, and the tests of the gate most likely fail.
-- A file is only put back when it is exactly what the run left: the original with one of its mutants. When a gate is saved by somebody else during the run, or edited after a run was killed, it is left as it is, the run stops with exit code 1, and the message names the backup.
-- Putting a file in place by renaming keeps its bytes, not its mode or its hard links. A gate that is a symbolic link is changed where it points to, which has to be on the same file system as the package. A gate that is not valid UTF-8 is not touched.
-- Run one `mutation` at a time in a package. A second one takes the mutant of the first for a leftover and puts the gate back.
+- With two jobs or more (the default on a machine with 8 processors or more) the mutants are put into working copies of the package below `.dart_tool/dart_mutant/`, and your files are not written.
+- With one job, and for a package that cannot be run from a copy (a `path:` dependency outside the package, a pub workspace), the gates are changed **in place**, one mutant at a time, and put back after every test run. Do not edit a gate, commit, or switch branches while that runs. For a package that cannot be run from a copy the tool says so in its first line.
+- One run at a time in a package. A second one is turned away by the tool (exit code 1, nothing changed), and `mutation` then fails: the gates have no result.
 
-There is no copy of the package in a temporary directory, for the reasons given for [`selfcheck`](#your-files-during-the-run), and the mutants are run one after the other: two test runs on one working tree would each see the other's mutant.
+On **Ctrl-C (SIGINT), SIGTERM and SIGHUP** `mutation` hands the signal to the tool and to every process that descends from it (the executable on `PATH` is a script that starts the tool, and would not pass it on), and waits until they have ended: the tool ends its test runs, removes its copies or puts the gate back, and writes no report. `mutation` then exits with 130 / 143 / 129 and judges nothing. What is still there after 60 seconds is killed. Where there is no `ps`, only the process that was started gets the signal. On Windows no signal can be handed on: the process that was started is ended, and the tool behind it is not waited for.
+
+A run that is killed outright (SIGKILL, power loss) with one job leaves one mutant in one gate. The next run of the tool puts the gate back before it does anything else. Until then `git diff` shows the mutant.
 
 ### How long it takes
 
-Measured with Flutter 3.47.2 / Dart 3.13.2 on a Mac Studio, one run at a time:
+Measured with Dart 3.13.2 on a Mac with 12 logical processors, `--force`, one run at a time:
 
-| Package                                          | Gates | Mutants   | Full run (`--force`) | Run again, nothing changed |
-| ------------------------------------------------ | ----- | --------- | -------------------- | -------------------------- |
-| A Flutter app with about 550 tests               | 8     | about 330 | about 12 minutes     | about 1 minute (the timeouts are measured again) |
-| Two utility files of another Flutter app         | 2     | about 120 | about 4 minutes      | not measured               |
-| This package (`dart test`), its own gates        | 15    | 2284      | 38 min (62 min on a GitHub-hosted runner; 14 min as one job per gate) | 1 min 52 s (the 4 timeouts are measured again) |
+| Package                                    | Gates | Mutants                        | Full run (`--force`) | Test runs at a time |
+| ------------------------------------------ | ----- | ------------------------------ | -------------------- | ------------------- |
+| [`example/`](example)                      | 2     | 69, of which 2 do not compile  | 1 min 1 s            | 1, in place (it has a `path:` dependency) |
+| This package, its own gates                | 14    | 2414, of which 245 do not compile | about 15 min      | 3, in working copies (the default there) |
 
-The two apps were run twice with `--force`; the statuses of every mutant were the same both times. Neither had been mutation tested before, so many of their mutants survived. This package is its own gate ([Development](#the-gates-of-this-package)): of its 2284 mutants 2001 are killed, 4 time out and 279 do not compile; nothing survives, and the four timeouts are in `expectedTimeouts`. In the first app the gates take between a few seconds and more than four minutes; half of the mutants take less than two seconds, and a few take about ten (a test that waits, or a timeout).
+Of the 2414 mutants of this package 2161 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
 
-The time is the number of mutants times the time to start the test runner on the test of the gate (between one and two and a half seconds for `flutter test` on one file, with the build of an earlier run in place), plus what the slow mutants add: a test that waits (10 seconds each) and a timeout. Mutants that do not compile cost about one second.
+A mutant that compiles costs one start of the test runner on the test of its gate. A second run without `--force` and without a change runs nothing but the timeouts.
 
 ## `test_gates mutation-result [--report <path>]`
 
-Judges an existing report without running anything: the report of the last `mutation`, or one of another tool in the mutation-testing-elements (Stryker) JSON schema. `--gate <path>` (may be given more than once) judges only those gates of it, see [`--gate`](#one-gate-at-a-time---gate). The rules are those of upstream's `mutation-result`, ported with its test cases.
+Judges an existing report without running anything: the report of the last `mutation`, of `dart_mutant` started by hand (`run`, or `merge` for a run in parts), or of another tool that writes the mutation-testing-elements JSON schema. `--gate <path>` (may be given more than once) judges only those gates of it, see [`--gate`](#one-gate-at-a-time---gate). The rules are those of upstream's `mutation-result`, ported with its test cases.
 
 | Status in the report                | Treated as                                                          |
 | ----------------------------------- | ------------------------------------------------------------------- |
@@ -639,30 +700,37 @@ The run also fails when
 - an allowance matches several mutants and has no `occurrence`,
 - two allowances point at the same mutant, or an allowance has no `reason`,
 - a gate is missing from the report or has no mutants, or no mutant was evaluated at all,
+- the report is that of a part of a run (`dart_mutant run --shard`): it is refused as a whole,
 - the report was made from a different version of a gate than the one on disk,
 - a mutant timed out outside `expectedTimeouts`, and there are more of them than `settings.mutation.maxTimeouts` allows.
 
-On failure every unallowed survivor is listed as `file:line:column / mutator / original → replacement / occurrence`, followed by a JSON fragment that can be pasted into `equivalentMutants`. The last line gives the real numbers, never a percentage. The example, without the allowance it has for this mutant:
+On failure every unallowed survivor is listed as `file:line:column / mutator / original → replacement / occurrence`, followed by a JSON fragment that can be pasted into `equivalentMutants`. The last line gives the real numbers, never a percentage. The example, without the two allowances it has:
 
 ```
-test_gates mutation: 1 surviving mutant(s) not in the allow list
+test_gates mutation: 2 surviving mutant(s) not in the allow list
+  - lib/bulk_discount.dart:19:39 / NumberLiteral / 50 → 51 / occurrence 2 of 2 (Survived)
   - lib/shipping_fee.dart:14:11 / EqualityOperator / > → >= (Survived)
 
 Fix the test so that it detects the mutant. Only when the mutant cannot be observed from
 outside (same return value, exception and side effects for every input), add it to
 "equivalentMutants" of the gate in test-gates.json and fill in "reason":
 
+  lib/bulk_discount.dart
+    {"mutator":"NumberLiteral","original":"50","replacement":"51","occurrence":2,"reason":""}
+
   lib/shipping_fee.dart
     {"mutator":"EqualityOperator","original":">","replacement":">=","reason":""}
 
-test_gates mutation: FAILED (mutants 44 / detected 41 (timeout 0) / allowed equivalent 0 / not evaluable 2 / unallowed survivors 1)
+test_gates mutation: FAILED (mutants 69 / detected 65 (timeout 0) / allowed equivalent 0 / not evaluable 2 / unallowed survivors 2)
 ```
+
+The fragment is the key of the mutant, whatever its mutator: when the same change can be made in several places of the file (`0` → `1`), it has the `occurrence` that picks this one.
 
 ### Allowing an equivalent mutant
 
 An equivalent mutant changes the code without changing anything observable: same return value, same exception, same side effects, for every input. Only those may be allowed, in `test-gates.json`, with the reason.
 
-The example has one. `lib/shipping_fee.dart` limits the fee:
+The example has two. `lib/shipping_fee.dart` limits the fee:
 
 ```dart
   if (fee > maxFeeCents) {
@@ -687,6 +755,8 @@ With `>=` the only input that is treated differently is a fee equal to the maxim
   ]
 }
 ```
+
+The other one is in `lib/bulk_discount.dart`, which rounds the discount half up with `(total * percent + 50) ~/ 100`. With `51` in place of `50` the result differs only when `total * percent` ends in 49, and the percentages are 0, 5 and 12: a multiple of 5 ends in 0 or 5, and a multiple of 12 is even. (`49` in place of `50` is not equivalent: half a cent is then rounded down, and a test notices.)
 
 - The key is `mutator` + `original` + `replacement`. `original` is the source text at the location in the report. Whitespace differences are ignored. **Line numbers are not part of the key**, so moving code does not break an allowance, and an allowance never covers a different mutant on the same line.
 - When the same key occurs more than once in a file, `occurrence` (1-based, in source order) is required.
@@ -725,14 +795,13 @@ A block that was not executed is written with hits `0`, not left out.
 
 Limits of `mutation`:
 
-- **Only the test of the gate is run.** A decision that is checked in another test file survives. Measured on one model class whose cases are spread over two test files: about five times as many survivors with its own test alone as with both. Move the cases into the test of the gate; `check` asks for exactly one test per gate for the same reason.
-- **The mutants are made from the syntax, without types.** Mutants that do not compile are made and counted (see [Mutators](#mutators)), and one kind that could compile is not made: the body of a function without a declared return type is not emptied when it has a `return <value>`.
+- **Only the test of the gate is run.** A decision that is checked in another test file survives. Move the cases into the test of the gate; `check` asks for exactly one test per gate for the same reason.
 - **A mutant that does not compile is not a detection and not a failure.** A gate whose mutants all fail to compile passes; the `not evaluable` number in the summary is where to look.
 - **Results of the last run do not see what the gate imports** (see [Results of the last run](#results-of-the-last-run-and---force)). Use `--force` where it counts.
-- **One mutant at a time.** There is no parallel run and no copy of the working tree. What can be split is the list of gates, over several machines: [`--gate`](#one-gate-at-a-time---gate).
-- **`flutter test` and `dart test` only.** The options `--fail-fast` and `--timeout` are theirs.
+- **The mutators that use types often make a mutant that nothing can observe**: a number that only has to be large enough, `round` → `ceil` on a value that is whole anyway, `first` ↔ `last` on a list of one. Such a survivor is a question about the test first; when the answer is that no input can tell the two apart, it is allowed with that reason.
 - **Logging is mutated like everything else.** A removed `log('fee capped');` survives unless a test reads the log; allow it with a reason.
-- **Stryker has mutators this tool does not**: `OptionalChaining` (`a?.b` → `a.b` does not compile under null safety), `ObjectLiteral`, `MethodExpression`, `Regex`, `ArrowFunction`. The body of `=> expression` functions is mutated through the expression only.
+- **`mutation` needs a newer Dart than the other commands**: `dart_mutant` runs on Dart 3.11 or later. `check`, `lcov`, `test`, `selfcheck` and `mutation-result` run on 3.9.
+- **What `dart_mutant` cannot do, `mutation` cannot do.** Its limits are in [its README](https://pub.dev/packages/dart_mutant): `flutter test` and `dart test` only, a package that cannot be run from a working copy is mutated in place and one mutant at a time, and on Windows a test run that is ended can leave a process behind.
 
 Other limits:
 
@@ -745,6 +814,17 @@ Other limits:
 - **`check` parses with the newest language version its `analyzer` knows.** The range is wide (`>=8.2.0 <15.0.0`) so that it resolves next to the code generators of an app; an app that pins an old `analyzer` and uses newer syntax in a gate gets a syntax error from `check`.
 - **Tests are not checked for mocking the gate.** Upstream rejects `jest.mock` of the module under test; Dart has no module mock.
 - **The tool does not judge what belongs in `gates`.** Whether every important decision has been extracted and listed is for people to review; `candidates` is where the known gaps are written down.
+
+## Upgrading from 0.1
+
+Until 0.1.1 `test_gates mutation` made the mutants and ran the tests itself. From 0.2.0 on it starts [`dart_mutant`](https://pub.dev/packages/dart_mutant) for that and judges its report. `test-gates.json` is read as before.
+
+1. Install the tool, on every machine that runs `mutation` and in CI: `dart pub global activate dart_mutant` (Dart 3.11 or later). Without it `mutation` ends with exit code 2.
+2. A test command that was given behind `--` now goes behind a second one: `test_gates mutation -- fvm flutter test --no-pub` becomes `test_gates mutation -- -- fvm flutter test --no-pub`. What follows the first `--` are options of `dart_mutant run` (`--jobs`, `--shard`, `--html`). The old form is refused with exit code 2.
+3. Run `test_gates mutation --force` once. The mutators of 0.1 make the same mutants as before, so every `equivalentMutants` and `expectedTimeouts` entry still matches. **New survivors are to be expected**: `dart_mutant` also changes members and numbers by their types (`MethodExpression`, `NumberLiteral`, the guard mutators, see [Mutators](#mutators)), which 0.1 did not. Each is a decision no test checked. Fix the test; allow only what no input can observe.
+4. Delete `.dart_tool/test_gates/mutation/`. The results and backups that 0.1 kept there are no longer read. (When a run of 0.1 was killed, `git diff` shows the mutant it left in a gate: put the gate back first.)
+
+What else changed: the lines per gate are printed by `dart_mutant`; on a machine with 8 processors or more the gates are no longer changed in place; `mutation-result` refuses the report of a part of a run; exit code 2 also means that the tool is missing.
 
 ## Relation to `@t09tanaka/test-gates`
 
@@ -762,10 +842,12 @@ Other limits:
 | Tests + coverage in one command | `npm run test:gates` (a script the project writes) | `test_gates test` |
 | `gateCommand` | the gate: its exit code is the verdict | runs the tests and writes the tracefile; the verdict comes from the tracefile |
 | Negative control (`selfcheck`) | leaves out the test of a gate; one run per gate | appends unexecuted code to the gates; one run for all |
-| Mutation testing | `mutation` runs Stryker, `mutation-result` judges its JSON report | `mutation` makes the mutants itself (syntax tree) and runs the tests of each gate; the same report schema, the same judgement and allow list |
+| Mutation testing | `mutation` runs Stryker, `mutation-result` judges its JSON report | `mutation` runs `dart_mutant`, `mutation-result` judges its JSON report; the same report schema, the same judgement and allow list |
+| The mutation tool | a development dependency of the project (`@stryker-mutator/core`), with a configuration file (`stryker.gates.config.mjs`) | a program of its own (`dart pub global activate dart_mutant`), given a plan that `mutation` makes from `test-gates.json`; no configuration file |
+| Arguments `mutation` does not know | handed to Stryker | what follows `--` is handed to `dart_mutant run` |
 | Report file | `settings.stryker.reportFile` | the same key |
-| Results of the last run | Stryker's incremental file | `.dart_tool/test_gates/mutation/incremental.json`; `--force` runs everything |
-| Safe defaults | 0.3.2 (`mutation.maxTimeouts: 0`, no overall threshold) | the same |
+| Results of the last run | Stryker's incremental file | those of `dart_mutant` (`.dart_tool/dart_mutant/incremental.json`); `--force` runs everything |
+| Safe defaults | 0.3.3 (`mutation.maxTimeouts: 0`, no overall threshold) | the same |
 
 `npx test-gates lcov` works on a Dart package too, and checks lines only. Use this package when the repository has no Node.js, or when branches should count.
 
@@ -778,9 +860,9 @@ dart analyze --fatal-infos
 dart test
 ```
 
-The decisions live in `lib/src/` as pure functions (text in, verdict out): `manifest.dart`, `settings.dart`, `lcov.dart`, `selfcheck.dart`, `args.dart`, for `check` `dart_source.dart`, `scan.dart`, `import_policy.dart`, `spec_path.dart`, `gate_path.dart`, `pubspec.dart`, `json.dart`, and for `mutation` `mutators.dart` (source in, mutants out), `mutation_run.dart` (the status of a run, the report, what may be reused) and `mutation_result.dart` (the judgement, a port of upstream's `mutation-result.ts` with its test cases). `dart_source.dart` and `mutators.dart` are the only files that touch `package:analyzer`. Reading and writing files, starting processes and printing are in `lib/src/io/` and `lib/src/commands/`.
+The decisions live in `lib/src/` as pure functions (text in, verdict out): `manifest.dart`, `settings.dart`, `lcov.dart`, `selfcheck.dart`, `args.dart`, for `check` `dart_source.dart`, `scan.dart`, `import_policy.dart`, `spec_path.dart`, `gate_path.dart`, `pubspec.dart`, `json.dart`, and for `mutation` `mutation_run.dart` (how `dart_mutant` is started: the commands that are tried, the supported versions, the plan, the arguments, and which of its exit codes leave the verdict to the report) and `mutation_result.dart` (the judgement, a port of upstream's `mutation-result.ts` with its test cases). `dart_source.dart` is the only file that touches `package:analyzer`. Reading and writing files, starting processes and printing are in `lib/src/io/` and `lib/src/commands/`.
 
-The tests of `test`, `selfcheck` and `mutation` start processes: stand-ins for the coverage command and for the test runner (`test/fixtures/selfcheck/fake_coverage.dart.txt`, `test/fixtures/mutation/fake_test.dart.txt`) and, in `test/commands/real_coverage_test.dart` and `real_mutation_test.dart`, `dart test` on a small package that is copied to a temporary directory and resolved with `dart pub get --offline`.
+The tests of `test`, `selfcheck` and `mutation` start processes: stand-ins for the coverage command and for `dart_mutant` (`test/fixtures/selfcheck/fake_coverage.dart.txt`, `test/fixtures/mutation/fake_dart_mutant.dart.txt`) and, in `test/commands/real_coverage_test.dart` and `real_mutation_test.dart`, `dart test` and `dart_mutant` itself on a small package that is copied to a temporary directory and resolved with `dart pub get --offline`. The test with `dart_mutant` is skipped where the tool is not installed, and fails there instead when `TEST_GATES_REQUIRE_DART_MUTANT=1` is set, as it is in the workflow.
 
 ### The gates of this package
 
@@ -797,10 +879,16 @@ dart run test_gates mutation --force  # everything, before a release
 
 - The test of `lib/src/x.dart` is `test/x_test.dart` (`settings.spec.rewrite`), and `mutation` runs only that file. A case that kills a mutant of `x.dart` belongs there, not in `test/commands/`.
 - The import check is in allowlist mode: a gate imports `dart:` libraries of the built-in list, other files of `lib/src/`, and `package:analyzer`. Nothing else.
-- A survivor is fixed with a test. `equivalentMutants` is for a mutant that no input can tell apart from the original, with the reason, and is empty at present; code that cannot be reached is deleted, not allowed. `expectedTimeouts` has the mutants that make a loop endless.
-- `mutation` changes the gates in place, and the gates are the code that is running. The tool is compiled before the first mutant goes in, so this works; do not start a second `dart run` in the package while it runs.
+- A survivor is fixed with a test. `equivalentMutants` is for a mutant that no input can tell apart from the original, with the reason: at present two in `json.dart` and two in `selfcheck.dart`. Code that does nothing is deleted, not allowed. `expectedTimeouts` has the mutants that make a loop endless.
+- Where `dart_mutant` runs one job (a machine with fewer than 8 processors, such as the runners of the workflow), the gates are changed in place, and the gates are the code that is running. `dart run` compiles the tool before the first mutant goes in, so this works; do not start a second `dart run` in the package while it runs.
 
-CI runs `check`, `test` and `selfcheck` on Dart 3.9.0 and on stable (which lines carry a branch entry is decided by the SDK), and `mutation --force` on stable only: the verdict on a mutant does not depend on the SDK, and the run is the long one (about an hour as one job on a GitHub-hosted runner). It is split into one job per gate with [`--gate`](#one-gate-at-a-time---gate); the jobs are made from `test-gates.json`, and the job `Mutation test of the gates` is green when all of them are. Split that way the whole workflow takes 14 minutes, the longest gate (`mutators.dart`) included.
+CI runs `check`, `test` and `selfcheck` on Dart 3.9.0 and on stable (which lines carry a branch entry is decided by the SDK), and `mutation --force` on stable only: `dart_mutant` needs a newer Dart than 3.9, and the verdict on a mutant does not depend on the SDK. It is split into one job per gate with [`--gate`](#one-gate-at-a-time---gate); the jobs are made from `test-gates.json`, and the job `Mutation test of the gates` is green when all of them are.
+
+## Related tools
+
+- [test-gates](https://github.com/t09tanaka/test-gates) (npm `@t09tanaka/test-gates`): the same gates for JavaScript and TypeScript, with Stryker as the mutation tool.
+- [dart_mutant](https://github.com/t09tanaka/dart_mutant) (pub.dev): mutation testing for Dart, the tool that runs the mutants these gates judge.
+- [contract-fixtures](https://github.com/t09tanaka/contract-fixtures) (TypeScript and Dart): shared request and response fixtures that keep an API and its clients in step.
 
 ## License
 

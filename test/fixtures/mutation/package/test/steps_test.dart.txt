@@ -1,0 +1,8 @@
+import 'package:selfcheck_fixture/steps.dart';
+import 'package:test/test.dart';
+
+void main() {
+  test('steps', () {
+    expect(steps(2, 5), 3);
+  });
+}

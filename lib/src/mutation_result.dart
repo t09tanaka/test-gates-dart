@@ -41,10 +41,15 @@ class ReportFile {
 
 /// The part of a mutation report that the verdict depends on.
 class MutationReport {
-  const MutationReport(this.files);
+  const MutationReport(this.files, {this.part});
 
   /// By path, as written in the report.
   final Map<String, ReportFile> files;
+
+  /// `2/4` when the report is that of a part of a run (`config.shard` of a
+  /// report of `dart_mutant run --shard`), else `null`. The mutants of the
+  /// other parts were not evaluated in it.
+  final String? part;
 }
 
 /// Thrown by [parseMutationReport] when the text is not a mutation report.
@@ -129,7 +134,14 @@ MutationReport parseMutationReport(String text) {
     }
     files[path] = ReportFile(source: source as String?, mutants: mutants);
   }
-  return MutationReport(files);
+  final shard = asObject(root['config'])?['shard'];
+  final numbers = asObject(shard);
+  return MutationReport(
+    files,
+    part: shard == null
+        ? null
+        : '${numbers?['index'] ?? '?'}/${numbers?['count'] ?? '?'}',
+  );
 }
 
 /// A mutant as it is listed for the reader. [allowance] can be pasted into
@@ -272,7 +284,9 @@ class _Located {
   final String original;
   final String replacement;
   final int occurrence;
-  int sameKeyCount = 0;
+
+  /// Set when every mutant of the file has been located.
+  late int sameKeyCount;
 
   ListedMutant listed(String file) => ListedMutant(
     file: file,
@@ -307,6 +321,9 @@ String _describeAllowance(EquivalentMutant entry) {
 /// when it matches several mutants and has no `occurrence`, or when two
 /// allowances point at the same mutant.
 ///
+/// The report of a part of a run (`dart_mutant run --shard`) is refused as a
+/// whole: it is not a result, whatever the statuses in it are.
+///
 /// [readSource] gives the source of a gate on disk, or `null` when it cannot
 /// be read. It is used when the report carries no source, and to reject a
 /// report made from an older file. The problems of the entries themselves
@@ -320,6 +337,19 @@ MutationVerdict judgeMutationReport({
   final verdict = MutationVerdict();
   final violations = verdict.violations;
   final summary = verdict.summary;
+
+  if (report.part != null) {
+    violations.add(
+      Violation(
+        file: 'mutation report',
+        message:
+            'is part ${report.part} of a run (--shard), not a result. Put '
+            'the parts together with "dart_mutant merge" and judge the '
+            'report that writes',
+      ),
+    );
+    return verdict;
+  }
 
   final files = {
     for (final MapEntry(:key, :value) in report.files.entries)

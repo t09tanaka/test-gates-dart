@@ -24,7 +24,7 @@
     {
       "path": "lib/src/gate_path.dart",
       "decides": "Whether a path in test-gates.json is a plain path inside the package",
-      "impact": "A gate outside the package is accepted, and selfcheck and mutation write to a file that is not the project's"
+      "impact": "A gate outside the package is accepted, and selfcheck writes to a file that is not the project's, and mutation names it to the tool that changes files"
     },
     {
       "path": "lib/src/pubspec.dart",
@@ -34,7 +34,21 @@
     {
       "path": "lib/src/json.dart",
       "decides": "What counts as an object, a filled string and an integer when test-gates.json and a mutation report are read",
-      "impact": "An empty reason or a fractional occurrence is accepted as valid"
+      "impact": "An empty reason or a fractional occurrence is accepted as valid",
+      "equivalentMutants": [
+        {
+          "mutator": "GuardResultSwapped",
+          "original": "{ return value; }",
+          "replacement": "{ return value.toInt(); }",
+          "reason": "The value is an int there, and toInt() of an int is that int"
+        },
+        {
+          "mutator": "MethodExpression",
+          "original": "toInt",
+          "replacement": "round",
+          "reason": "The value is a double without a fraction there (it is equal to its truncation), so rounding gives the same int as toInt()"
+        }
+      ]
     },
     {
       "path": "lib/src/import_policy.dart",
@@ -61,24 +75,33 @@
       "impact": "A gate that does I/O, or whose coverage is switched off or whose test is skipped, passes check and reports 100%"
     },
     {
-      "path": "lib/src/mutators.dart",
-      "decides": "Which mutants are made from a gate: the mutators, what is left alone, and which mutants are not made because they cannot compile or are equivalent",
-      "impact": "A decision gets no mutant, so a test that does not check it is never found; or a mutant that is no real change is counted as a survivor"
-    },
-    {
       "path": "lib/src/mutation_run.dart",
-      "decides": "The status of a mutant from its test run, the limit of a run, the report, and whether a result of the last run may be reused",
-      "impact": "A mutant that the tests did not notice is reported as killed, or an outdated result is reused after the gate or its test changed"
+      "decides": "How dart_mutant is started for the gates: which commands are tried, which versions are supported, the plan and the arguments, which of its exit codes are judged by the report, and what is taken out of an earlier report first",
+      "impact": "A run of an unsupported version, of other files than the gates, or one that stopped early is judged as if it were the full run, or a report of an earlier run passes for this one"
     },
     {
       "path": "lib/src/mutation_result.dart",
-      "decides": "Whether a mutation run passes: which mutants count as detected, which survivors an allowance covers, when an allowance is stale or ambiguous, and how many timeouts are tolerated",
+      "decides": "Whether a mutation run passes: which mutants count as detected, which survivors an allowance covers, when an allowance is stale or ambiguous, how many timeouts are tolerated, and that a part of a run is no result",
       "impact": "A surviving mutant, a stale allowance or an unevaluated mutant passes silently and every project using test_gates loses its real guard"
     },
     {
       "path": "lib/src/selfcheck.dart",
       "decides": "The probe that is appended to a gate, how it is removed again, and whether a negative control held on the line of the probe",
-      "impact": "A gate that measures nothing is reported as working, or a probe is left in a source file or cuts into it when removed"
+      "impact": "A gate that measures nothing is reported as working, or a probe is left in a source file or cuts into it when removed",
+      "equivalentMutants": [
+        {
+          "mutator": "ConstantNumberLiteral",
+          "original": "512",
+          "replacement": "513",
+          "reason": "How many bytes at the end of a file are searched for the probe. The probe has a fixed length of less than 200 bytes and is found from the end of the file, so it is inside the searched bytes either way and is found at the same place"
+        },
+        {
+          "mutator": "ConstantNumberLiteral",
+          "original": "512",
+          "replacement": "511",
+          "reason": "The same number, one byte less: still more than twice the length of the probe"
+        }
+      ]
     },
     {
       "path": "lib/src/args.dart",
@@ -116,7 +139,7 @@
     },
     {
       "path": "lib/src/version.dart",
-      "decides": "The version that is part of the key of a reused mutation result",
+      "decides": "The version that --version prints",
       "blocker": "A constant. A test keeps it equal to pubspec.yaml"
     },
     {
@@ -127,11 +150,11 @@
     {
       "path": "lib/src/commands",
       "decides": "The order of the steps of each command, what is printed, and the exit code",
-      "blocker": "Read and write files and start processes. The decisions they print are taken in the gates; what is left is tested with stand-in commands in test/commands"
+      "blocker": "Read and write files and start processes. The decisions they print are taken in the gates; what is left is tested with stand-in commands in test/commands (for mutation: a stand-in for dart_mutant, and the tool itself where it is installed)"
     },
     {
       "path": "lib/src/io",
-      "decides": "How files are replaced and put back, and how a process and its descendants are ended",
+      "decides": "How files are read, and how a process and its descendants are ended or handed a signal",
       "blocker": "dart:io throughout. Tested against real files and processes in test/commands"
     }
   ],

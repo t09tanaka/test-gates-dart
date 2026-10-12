@@ -14,6 +14,8 @@ void main() {
       // An empty string is not an extension, although every path ends
       // with it.
       expect(gateExtensionOf('lib/a.ts', ['']), isNull);
+      // The shortest extension there can be.
+      expect(gateExtensionOf('lib/a.', ['.']), '.');
     });
   });
 

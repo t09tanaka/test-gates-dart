@@ -2,160 +2,226 @@ import 'dart:convert';
 
 import 'json.dart';
 import 'mutation_result.dart';
-import 'mutators.dart';
-import 'version.dart';
 
-/// The limit of one test, passed to the test runner as `--timeout`. A test
-/// that waits for something a mutant no longer does then fails (Killed)
-/// instead of holding the run for the 30 seconds of the runner's default.
-const perTestTimeoutSeconds = 10;
+/// The tool that makes the mutants and runs the tests on them. `mutation`
+/// starts it as a program of its own and judges the report it writes.
+const dartMutant = 'dart_mutant';
 
-/// How long the test run of one mutant may take: three times the run without
-/// a mutant, plus 20 seconds. Only a mutant that keeps the process itself
-/// from ending (a loop that never yields) gets this far; it is a Timeout.
-Duration processLimit(Duration baseline) =>
-    baseline * 3 + const Duration(seconds: 20);
+/// How the tool is installed, for the message that says it is missing.
+const dartMutantInstall = 'dart pub global activate $dartMutant';
 
-/// How long the run without a mutant may take.
-const baselineLimit = Duration(minutes: 10);
+/// The lowest version of the tool this version works with. Every later
+/// version with the same major and minor number is supported as well
+/// (0.1.0: every 0.1.x). The one place that says so; the messages and the
+/// check are made from it.
+const supportedDartMutant = (major: 0, minor: 1, patch: 0);
 
-final _flutterSdk = RegExp(r'^\s+sdk:\s*flutter\s*(#.*)?$', multiLine: true);
+/// The supported versions as `dart pub global activate` takes them:
+/// `^0.1.0` for [supportedDartMutant] 0.1.0, which is 0.1.0 or later and
+/// below 0.2.0.
+String dartMutantConstraint([
+  ({int major, int minor, int patch}) lowest = supportedDartMutant,
+]) => '^${lowest.major}.${lowest.minor}.${lowest.patch}';
 
-/// True when the pubspec has a dependency from the Flutter SDK: the tests
-/// then need `flutter test`.
-bool usesFlutter(String pubspec) =>
-    _flutterSdk.hasMatch(pubspec.replaceAll('\r\n', '\n'));
+/// The same in words: `0.1.0 or later, below 0.2.0`.
+String dartMutantRange([
+  ({int major, int minor, int patch}) lowest = supportedDartMutant,
+]) =>
+    '${lowest.major}.${lowest.minor}.${lowest.patch} or later, below '
+    '${lowest.major}.${lowest.minor + 1}.0';
 
-/// The command that runs test files, program first: [override] when given,
-/// else `flutter test --no-pub` for a Flutter package and `dart test` for any
-/// other.
-List<String> testCommandFor({
-  required bool flutter,
-  List<String> override = const [],
-}) => override.isNotEmpty
-    ? override
-    : flutter
-    ? const ['flutter', 'test', '--no-pub']
-    : const ['dart', 'test'];
+/// Where the plan for the tool is written, below the package. `.dart_tool`
+/// is ignored by git in every Dart project.
+const planFile = '.dart_tool/test_gates/mutation-plan.json';
 
-/// [command] for the tests in [specs]: the first failing test ends the run,
-/// and a test gets [perTestTimeoutSeconds].
-List<String> mutantCommand(List<String> command, List<String> specs) => [
-  ...command,
-  '--fail-fast',
-  '--timeout',
-  '${perTestTimeoutSeconds}s',
-  ...specs,
+/// The commands that are tried, in this order, to start the tool: the
+/// executable on PATH, then the globally activated package through [dart]
+/// (the `dart` that runs this program). The first that answers `--version`
+/// is the one that is used.
+List<List<String>> dartMutantCommands(String dart) => [
+  const [dartMutant],
+  [dart, 'pub', 'global', 'run', dartMutant],
 ];
 
-/// The compiler's `file.dart:12:3: Error: ...`, and what `flutter test`
-/// prints when a test file cannot be loaded.
-final _compileError = RegExp(r'(\.dart:\d+:\d+: Error: |Compilation failed)');
+final _version = RegExp(r'^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.+-]*)?$');
 
-/// The status of a mutant from the test run on it.
-///
-/// - the process limit was reached → `Timeout`
-/// - the tests passed → `Survived`
-/// - the code did not compile → `CompileError` (nothing was evaluated)
-/// - anything else → `Killed`
-String classifyRun({
-  required int? exitCode,
-  required String output,
-  required bool timedOut,
-}) {
-  if (timedOut) {
-    return 'Timeout';
-  }
-  if (exitCode == 0) {
-    return 'Survived';
-  }
-  return _compileError.hasMatch(output) ? 'CompileError' : 'Killed';
+/// The version a command answered `--version` with, or `null` when what it
+/// printed ([output]) is not the answer of the tool: it failed
+/// ([exitCode] is not 0, or `null` when it could not be started), or it
+/// printed something else.
+String? dartMutantVersionOf(int? exitCode, String output) {
+  final text = output.trim();
+  return exitCode == 0 && _version.hasMatch(text) ? text : null;
 }
 
-/// 1-based line and column of [offset]. Lines end at `\n`, as they do where
-/// the report is judged; a `\r` before it belongs to the line.
-({int line, int column}) positionOf(String source, int offset) {
-  final before = source.substring(0, offset);
-  return (
-    line: '\n'.allMatches(before).length + 1,
-    // lastIndexOf gives -1 on the first line, whose start is 0.
-    column: offset - before.lastIndexOf('\n'),
-  );
+/// True when [version] (as [dartMutantVersionOf] gives it) is supported:
+/// the major and minor number of [lowest], and its patch number or a later
+/// one.
+bool isSupportedDartMutant(
+  String version, [
+  ({int major, int minor, int patch}) lowest = supportedDartMutant,
+]) {
+  final match = _version.firstMatch(version)!;
+  return int.parse(match[1]!) == lowest.major &&
+      int.parse(match[2]!) == lowest.minor &&
+      int.parse(match[3]!) >= lowest.patch;
 }
 
-/// What a run found out about one gate.
-class GateRun {
-  const GateRun({
-    required this.source,
-    required this.mutants,
-    required this.statuses,
-    required this.milliseconds,
-  });
-
-  /// The gate as it was mutated.
-  final String source;
-  final List<Mutant> mutants;
-
-  /// One per mutant, in the same order.
-  final List<String> statuses;
-
-  /// One per mutant. 0 for a result taken from an earlier run.
-  final List<int> milliseconds;
-}
-
-/// The report of a run in the mutation-testing-elements (Stryker) JSON
-/// schema, version 2: what `mutation-result` judges, and what the Stryker
-/// report viewers read.
-///
-/// [others] are the files of an earlier report that this run did not touch
-/// (see [otherReportFiles]). They are written as they were.
-JsonObject buildReport(
-  Map<String, GateRun> gates, {
-  JsonObject others = const {},
-}) => {
-  'schemaVersion': '2',
-  'thresholds': {'high': 100, 'low': 100},
-  'framework': {'name': 'test_gates', 'version': packageVersion},
-  'files': {
-    ...others,
-    for (final MapEntry(key: path, value: run) in gates.entries)
-      path: {
-        'language': 'dart',
-        'source': run.source,
-        'mutants': [
-          for (final (index, mutant) in run.mutants.indexed)
-            {
-              'id': '$path#$index',
-              'mutatorName': mutant.mutator,
-              'replacement': mutant.replacement,
-              'status': run.statuses[index],
-              'duration': run.milliseconds[index],
-              'location': {
-                'start': _json(positionOf(run.source, mutant.offset)),
-                'end': _json(positionOf(run.source, mutant.end)),
-              },
-            },
-        ],
-      },
-  },
+/// The options of `dart_mutant run` that `mutation` sets by itself, with the
+/// option of this tool that says the same.
+const _reserved = {
+  '--dir': '--dir',
+  '--plan': null,
+  '--report': '--report',
+  '--only': '--gate',
 };
 
-/// What a run starts from in the file of the results of the last run
-/// ([saved], path → entry) and writes back with its own results.
+/// The options with which the tool runs nothing and ends with exit code 0.
+const _noRun = ['--help', '-h', '--version', '-v'];
+
+/// What of [rest] (what follows `--` on the command line of `mutation`) is
+/// for the tool itself: everything in front of a second `--`. Behind that
+/// one is the command that runs test files.
+List<String> _ownOptions(List<String> rest) =>
+    rest.takeWhile((argument) => argument != '--').toList();
+
+String _nameOf(String argument) => argument.split('=').first;
+
+/// Why [rest] cannot be handed to `dart_mutant run`, or `null` when it can.
 ///
-/// Without `--force` that is everything. With it nothing of the gates of
-/// this run may be left, also when the run does not get to them: the next
-/// run must not reuse what `--force` was given to measure again. [selected]
-/// are the gates of a run with `--gate` (`null`: every gate); the results of
-/// the other gates are not this run's to forget.
-JsonObject carriedResults(
-  JsonObject saved, {
+/// It is handed over as it is, so what the tool does not know is refused by
+/// the tool. Only what would make it run something else than the gates, or
+/// write the report somewhere else than where it is judged, is refused here.
+String? passThroughProblem(List<String> rest) {
+  if (rest.isNotEmpty && !rest.first.startsWith('-')) {
+    return 'what follows "--" is handed to $dartMutant run, and '
+        '"${rest.first}" is not one of its options. The command that runs '
+        'test files goes behind a second "--": '
+        'mutation -- -- ${rest.join(' ')}';
+  }
+  for (final argument in _ownOptions(rest)) {
+    final name = _nameOf(argument);
+    if (_noRun.contains(name)) {
+      return '$name cannot be handed to $dartMutant run: the tool would '
+          'print its help or its version and run nothing';
+    }
+    if (_reserved.containsKey(name)) {
+      final own = _reserved[name];
+      return '$name cannot be handed to $dartMutant run: mutation sets it '
+          'from test-gates.json'
+          '${own == null ? '' : '. Give $own in front of "--"'}';
+    }
+  }
+  return null;
+}
+
+/// True when [rest] asks for a part of a run (`--shard`). The report of a
+/// part is not a result, so it is not judged.
+bool asksForPart(List<String> rest) =>
+    _ownOptions(rest).any((argument) => _nameOf(argument) == '--shard');
+
+/// The plan file of the tool for [targets]: each gate with its tests, in
+/// this order.
+JsonObject buildPlan(List<({String file, List<String> tests})> targets) => {
+  'version': 1,
+  'targets': [
+    for (final target in targets) {'file': target.file, 'tests': target.tests},
+  ],
+};
+
+/// The arguments of the tool for a run of the gates of the plan at [plan],
+/// in the package [dir], with the report at [report].
+///
+/// [only] are the gates of a run with `--gate` (`null`: every gate of the
+/// plan). They are named with `--only`, so that the tool keeps what the
+/// report says about the other gates. [rest] is handed over as it is.
+List<String> dartMutantArguments({
+  required String dir,
+  required String plan,
+  required String report,
   required bool force,
-  required List<String>? selected,
-}) => {
-  for (final MapEntry(key: path, :value) in saved.entries)
-    if (!force || (selected != null && !selected.contains(path))) path: value,
-};
+  required List<String>? only,
+  List<String> rest = const [],
+}) => [
+  'run',
+  '--dir',
+  dir,
+  '--plan',
+  plan,
+  '--report',
+  report,
+  if (force) '--force',
+  for (final gate in only ?? const <String>[]) ...['--only', gate],
+  ...rest,
+];
+
+/// What the exit code of the tool means for `mutation`.
+///
+/// 0 (no mutant survived) and 1 (one did, or a file could not be mutation
+/// tested) say nothing about the verdict: the report does, and `null` is
+/// returned. Any other code is the exit code of `mutation`, and nothing is
+/// judged: 2 (the tool refused its command line), 130 / 143 / 129 (it was
+/// interrupted), and whatever else it ended with. [exitCode] is negative
+/// when a signal ended the process (-9 for SIGKILL); that is given as a
+/// shell gives it, 128 + the number of the signal.
+int? exitCodeWithoutVerdict(int exitCode) {
+  if (exitCode < 0) {
+    return 128 - exitCode;
+  }
+  return exitCode == 0 || exitCode == 1 ? null : exitCode;
+}
+
+/// The gates of [planned] that the report [text] has nothing about (`null`:
+/// there is no report, or it cannot be read as one). The tool leaves out a
+/// file it could not mutation test, and writes no report when it had to
+/// stop.
+List<String> missingFromReport(String? text, List<String> planned) {
+  final files = _filesOf(text).keys.map(normalizeReportPath).toSet();
+  return [
+    for (final path in planned)
+      if (!files.contains(normalizeReportPath(path))) path,
+  ];
+}
+
+/// True when the report [text] shows why the tool ended with exit code 1 on
+/// the gates [planned]: one of them has a mutant that survived, or is
+/// missing. When it does not, the tool failed at something else (a page
+/// that could not be written, say), and the run must not pass on a report
+/// that does not say so.
+bool explainsFailure(String? text, List<String> planned) {
+  if (missingFromReport(text, planned).isNotEmpty) {
+    return true;
+  }
+  final wanted = planned.map(normalizeReportPath).toSet();
+  for (final MapEntry(key: path, :value) in _filesOf(text).entries) {
+    final mutants = asObject(value)?['mutants'];
+    if (wanted.contains(normalizeReportPath(path)) &&
+        mutants is List &&
+        mutants.any((mutant) => asObject(mutant)?['status'] == 'Survived')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/// True when [text] is a mutation report: a JSON object with `files`. A
+/// file of another kind at the place of the report is not deleted or
+/// written over; the tool refuses to replace it.
+bool isReport(String text) => asObject(_decode(text)?['files']) != null;
+
+JsonObject? _decode(String? text) {
+  if (text == null) {
+    return null;
+  }
+  try {
+    return asObject(jsonDecode(text));
+  } on FormatException {
+    return null;
+  }
+}
+
+JsonObject _filesOf(String? text) =>
+    asObject(_decode(text)?['files']) ?? const {};
 
 /// The gates a run is limited to with `--gate`: the paths of [requested]
 /// that are gates, in the order of test-gates.json and each once, and the
@@ -174,121 +240,25 @@ JsonObject carriedResults(
   ],
 );
 
-/// What a run that is limited to the gates [selected] keeps of the report
-/// that is already there ([existing], `null` when there is none): the files
-/// of the other gates, as they are written. The results of a full run are
-/// then still in the report after one gate was run again.
+/// What a run of the gates [selected] leaves of the report that is already
+/// there ([existing]) before the tool is started: the report without what it
+/// says about these gates, or `null` when nothing is left and the file is
+/// to be deleted. Whatever is judged after the run was then written by the
+/// run, also when the tool ends without writing a report.
 ///
 /// The paths are compared as the judgement compares them, so the result of
 /// a selected gate is not kept under another spelling of its path
-/// (`./lib/a.dart`).
-///
-/// Nothing is kept of a file that is not a report.
-JsonObject otherReportFiles(String? existing, List<String> selected) {
-  if (existing == null) {
-    return {};
-  }
-  final Object? decoded;
-  try {
-    decoded = jsonDecode(existing);
-  } on FormatException {
-    return {};
-  }
-  final files = asObject(asObject(decoded)?['files']) ?? {};
+/// (`./lib/a.dart`). [existing] is a report, see [isReport].
+String? reportWithout(String existing, List<String> selected) {
+  final report = _decode(existing);
   final left = selected.map(normalizeReportPath).toSet();
-  return {
-    for (final MapEntry(key: path, :value) in files.entries)
+  final others = {
+    for (final MapEntry(key: path, :value) in _filesOf(existing).entries)
       if (!left.contains(normalizeReportPath(path))) path: value,
   };
+  return others.isEmpty
+      ? null
+      : const JsonEncoder.withIndent(
+          '  ',
+        ).convert({...report!, 'files': others});
 }
-
-JsonObject _json(({int line, int column}) position) => {
-  'line': position.line,
-  'column': position.column,
-};
-
-/// What decides the result of a gate: when all of it is the same as in an
-/// earlier run, that run's statuses are still true.
-///
-/// A file the gate imports is not part of it: a change there is only seen by
-/// a run with `--force`.
-class GateInput {
-  const GateInput({
-    required this.source,
-    required this.specs,
-    required this.command,
-  });
-
-  /// The gate.
-  final String source;
-
-  /// The tests of the gate: path → content.
-  final Map<String, String> specs;
-
-  /// The test command, without the test files.
-  final List<String> command;
-
-  JsonObject toJson() => {
-    'toolVersion': packageVersion,
-    'mutatorsVersion': mutatorsVersion,
-    'command': command,
-    'source': source,
-    'specs': specs,
-  };
-}
-
-bool _sameJson(Object? a, Object? b) {
-  if (a is Map && b is Map) {
-    return a.length == b.length &&
-        a.keys.every((key) => b.containsKey(key) && _sameJson(a[key], b[key]));
-  }
-  if (a is List && b is List) {
-    return a.length == b.length &&
-        a.indexed.every((item) => _sameJson(item.$2, b[item.$1]));
-  }
-  return a == b;
-}
-
-/// The statuses of [mutantCount] mutants that an earlier run ([entry], as
-/// [incrementalEntry] wrote it) found for exactly [input], or `null` when
-/// that run was on something else.
-///
-/// A `Timeout` is given as `null`: it can come from the load of the machine,
-/// so it is measured again.
-List<String?>? reusableStatuses(
-  Object? entry,
-  GateInput input,
-  int mutantCount,
-) {
-  final object = asObject(entry);
-  final statuses = object?['statuses'];
-  if (object == null ||
-      statuses is! List ||
-      statuses.length != mutantCount ||
-      statuses.any((status) => status is! String) ||
-      !_sameJson(object['input'], input.toJson())) {
-    return null;
-  }
-  return [
-    for (final status in statuses)
-      status == 'Timeout' ? null : status as String,
-  ];
-}
-
-/// What is kept of a gate for [reusableStatuses] of a later run.
-JsonObject incrementalEntry(GateInput input, List<String> statuses) => {
-  'input': input.toJson(),
-  'statuses': statuses,
-};
-
-/// True when [current] is what a run that was killed can have left in a gate
-/// whose content was [original]: one of its mutants. (A mutant is put in
-/// place with a rename, so there is no half-written state.)
-///
-/// False when [current] is [original], and for anything else: somebody
-/// edited the file, and their content must not be overwritten.
-bool isLeftoverOf(String original, String current) =>
-    current != original &&
-    findMutants(
-      original,
-    ).mutants.any((mutant) => mutant.applyTo(original) == current);

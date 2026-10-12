@@ -1,0 +1,7 @@
+/// The number of steps between two positions. A position below zero counts
+/// as zero.
+int steps(int from, int to) {
+  final first = from < 0 ? 0 : from;
+  final last = to < 0 ? 0 : to;
+  return (last - first).abs();
+}

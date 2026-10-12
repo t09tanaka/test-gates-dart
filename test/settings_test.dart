@@ -152,6 +152,13 @@ void main() {
       rejects({
         'gateExtensions': ['dart'],
       }, message);
+      // One of them is enough.
+      rejects({
+        'gateExtensions': ['.dart', 'g.dart'],
+      }, message);
+      rejects({
+        'gateExtensions': ['g.dart', '.dart'],
+      }, message);
       for (final value in [
         null,
         '.dart',

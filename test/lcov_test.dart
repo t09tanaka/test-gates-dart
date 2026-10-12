@@ -202,6 +202,38 @@ void main() {
       expect((file.branchesHit, file.branchesFound), (0, 1));
     });
 
+    test('reads the numbers of an entry with blanks around them, and a '
+        'branch written with blanks as the same branch', () {
+      final report = parseLcov(
+        'SF:lib/a.dart\nDA: 1 , 2 \nDA:2 ,0\n'
+        'BRDA: 1 , 0 , 0 , 1 \nBRDA:1,0,0, 0\n'
+        'BRDA:2,0,0, -\nBRDA:2, 0,0 ,-\nend_of_record\n',
+      );
+      expect(report.problems, isEmpty);
+      final file = report.files['lib/a.dart']!;
+      expect((file.hit, file.found), (1, 2));
+      expect(file.uncovered, [2]);
+      // Two branches, not five: `1,0,0` taken once, `2,0,0` never reached.
+      expect((file.branchesHit, file.branchesFound), (1, 2));
+      expect(file.untakenBranchLines, [2]);
+    });
+
+    test('LF / LH with blanks, without a number, and one without the '
+        'other', () {
+      Object counts(String record) {
+        final file = parseLcov(
+          'SF:lib/a.dart\n${record}end_of_record\n',
+        ).files['lib/a.dart']!;
+        return (file.hit, file.found);
+      }
+
+      expect(counts('LF: 4 \nLH: 3 \n'), (3, 4));
+      expect(counts('LF:4\n'), (0, 4));
+      expect(counts('LH:3\n'), (3, 0));
+      expect(counts('LF:x\nLH:3\n'), (3, 0));
+      expect(counts('LF:4\nLH:y\n'), (0, 4));
+    });
+
     test('does not trust LH / LF when DA entries exist', () {
       final file = parseLcov(
         'SF:lib/a.dart\nDA:1,1\nDA:2,0\nLF:2\nLH:2\nend_of_record\n',
@@ -386,7 +418,16 @@ void main() {
         'lib/unloaded.dart: no record in the lcov file',
       ]);
       expect(verdict.results.map((result) => result.ok), [false, true]);
-      expect(verdict.results.first.found, 0);
+      final unloaded = verdict.results.first;
+      expect(
+        (
+          unloaded.found,
+          unloaded.hit,
+          unloaded.branchesFound,
+          unloaded.branchesHit,
+        ),
+        (0, 0, 0, 0),
+      );
     });
 
     test('a gate without an instrumented line fails', () {

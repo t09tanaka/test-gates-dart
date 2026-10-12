@@ -226,6 +226,30 @@ void main() {
       );
     });
 
+    test('the result of the gate is the one that counts, wherever it is '
+        'among the results', () {
+      final report = parseLcov(
+        'SF:lib/a.dart\nDA:9,0\nBRDA:9,0,0,0\nend_of_record\n',
+      );
+      const failed = LcovGateResult(path: 'lib/a.dart', ok: false);
+      const passed = LcovGateResult(path: 'lib/a.dart', ok: true);
+      const otherPassed = LcovGateResult(path: 'lib/b.dart', ok: true);
+      const otherFailed = LcovGateResult(path: 'lib/c.dart', ok: false);
+      String? judged(List<LcovGateResult> results) => judgeProbe(
+        gate,
+        report,
+        LcovVerdict(violations: const [], results: results),
+      );
+      expect(judged([failed, otherPassed]), isNull);
+      expect(judged([otherPassed, failed, otherPassed]), isNull);
+      expect(judged([otherFailed, failed]), isNull);
+      const message =
+          'the probe at line 9 was not executed, and the gate passed';
+      expect(judged([passed, otherFailed]), message);
+      expect(judged([otherFailed, passed]), message);
+      expect(judged([otherFailed]), message);
+    });
+
     test('a verdict that passes the gate', () {
       final report = parseLcov(
         'SF:lib/a.dart\nDA:9,0\nBRDA:9,0,0,0\nend_of_record\n',

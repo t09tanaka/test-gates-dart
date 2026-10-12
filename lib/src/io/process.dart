@@ -128,6 +128,72 @@ Future<void> _endTree(Process process, Duration grace) async {
   }
 }
 
+/// The processes of [pids] that are still there, as `ps` lists them now.
+/// Empty on Windows and when `ps` cannot be run.
+List<int> _stillThere(List<int> pids) {
+  if (Platform.isWindows || pids.isEmpty) {
+    return const [];
+  }
+  final ProcessResult listed;
+  try {
+    listed = Process.runSync('ps', ['-o', 'pid=', '-p', pids.join(',')]);
+  } on ProcessException {
+    return const [];
+  }
+  return [
+    for (final line in (listed.stdout as String).split('\n'))
+      ?int.tryParse(line.trim()),
+  ];
+}
+
+/// Hands [signal] to [process] and to what it started, and waits until all
+/// of them have ended. For a tool that puts files back itself when it is
+/// interrupted: ending it the hard way would keep it from doing so, and the
+/// program that was started is often only a launcher (a shell script, or
+/// `dart pub global run`) that does not pass a signal on.
+///
+/// [seen] are the processes that descended from it a moment ago. A launcher
+/// that has ended already has no descendants any more, and the tool it
+/// started is still at work.
+///
+/// What is still there after [grace] is killed.
+Future<void> _handOver(
+  Process process,
+  ProcessSignal? signal,
+  Duration grace,
+  List<int> seen,
+) async {
+  var descendants = {...seen, ..._descendantsOf(process.pid)}.toList();
+  if (signal != null) {
+    process.kill(signal);
+    for (final pid in descendants) {
+      Process.killPid(pid, signal);
+    }
+  }
+  var exited = false;
+  unawaited(process.exitCode.then((_) => exited = true));
+  final waited = Stopwatch()..start();
+  while (waited.elapsed < grace) {
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    // A process that has ended is not looked for again: its number can be
+    // given to another process, which is not ours to end.
+    descendants = _stillThere(descendants);
+    if (exited && descendants.isEmpty) {
+      return;
+    }
+  }
+  if (!exited) {
+    process.kill(ProcessSignal.sigkill);
+  }
+  for (final pid in descendants) {
+    Process.killPid(pid, ProcessSignal.sigkill);
+  }
+}
+
+/// How long a tool that was handed a signal gets to put things back. It
+/// ends its own test runs first, each with a grace of its own.
+const _handOverGrace = Duration(seconds: 60);
+
 /// How long a child gets to end after SIGTERM before it is killed.
 const _killGrace = Duration(seconds: 10);
 
@@ -159,12 +225,17 @@ const _signalGrace = Duration(milliseconds: 250);
 /// When [signals] reports a signal, the child is ended and the result carries
 /// the signal. When the command runs longer than [timeout], it is ended with
 /// everything it started and the result says so.
+///
+/// With [handOver] a signal is not answered by ending the command: the
+/// signal is passed on to it and to every process that descends from it, and
+/// they are waited for, because the command puts files back itself.
 Future<CommandResult> runCommand(
   List<String> command, {
   required String workingDirectory,
   required bool capture,
   required SignalWatch signals,
   Duration? timeout,
+  bool handOver = false,
 }) async {
   final Process process;
   try {
@@ -191,6 +262,15 @@ Future<CommandResult> runCommand(
     }
   }
 
+  // For [handOver]: what descends from the command, as of a moment ago.
+  var seen = const <int>[];
+  final watch = handOver
+      ? Timer.periodic(
+          const Duration(milliseconds: 500),
+          (_) => seen = _descendantsOf(process.pid),
+        )
+      : null;
+
   final limit = Completer<_LimitReached>();
   final timer = timeout == null
       ? null
@@ -201,8 +281,13 @@ Future<CommandResult> runCommand(
     limit.future,
   ]);
   timer?.cancel();
+  watch?.cancel();
   if (ended is ProcessSignal) {
-    await _endTree(process, _killGrace);
+    if (handOver) {
+      await _handOver(process, ended, _handOverGrace, seen);
+    } else {
+      await _endTree(process, _killGrace);
+    }
     return CommandResult(output: output.toString(), signal: ended);
   }
   if (ended is _LimitReached) {
@@ -218,6 +303,12 @@ Future<CommandResult> runCommand(
       Future<void>.delayed(_signalGrace),
       signals.received,
     ]);
+  }
+  if (handOver && signals.signal != null) {
+    // The signal reached the command before it was seen here (Ctrl-C goes
+    // to both), and what was started has ended: a launcher, perhaps. The
+    // tool behind it has the signal as well, and is waited for.
+    await _handOver(process, null, _handOverGrace, seen);
   }
   return CommandResult(
     exitCode: signals.signal == null ? ended as int : null,

@@ -144,10 +144,12 @@ String? judgeProbe(ProbedGate gate, LcovReport report, LcovVerdict verdict) {
     return 'the probe at line $line is not reported as a branch that was not '
         'taken. Collect the coverage with --branch-coverage';
   }
-  final result = verdict.results
-      .where((result) => result.path == gate.path)
-      .firstOrNull;
-  if (result == null || result.ok) {
+  // A gate has one result: a path that is listed twice is a problem of
+  // test-gates.json, and stops selfcheck before anything is judged.
+  final failed = verdict.results.any(
+    (result) => result.path == gate.path && !result.ok,
+  );
+  if (!failed) {
     return 'the probe at line $line was not executed, and the gate passed';
   }
   return null;
