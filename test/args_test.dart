@@ -161,6 +161,24 @@ void main() {
     }
   });
 
+  test('--not-evaluable, for mutation and mutation-result', () {
+    for (final command in ['mutation', 'mutation-result']) {
+      expect(parseArgs([command]).notEvaluable, isFalse);
+      final args = parseArgs([command, '--not-evaluable', '--dir', 'app']);
+      expect((args.notEvaluable, args.dir, args.force), (true, 'app', false));
+      expect(args.mode, isNull);
+      expect(
+        () => parseArgs([command, '--not-evaluable=1']),
+        usageError('--not-evaluable does not take a value'),
+      );
+    }
+    expect(parseArgs(['mutation', '--force']).notEvaluable, isFalse);
+    expect(
+      () => parseArgs(['selfcheck', '--not-evaluable']),
+      usageError('unknown argument for selfcheck: --not-evaluable'),
+    );
+  });
+
   test('mutation-result takes --dir and --report', () {
     final args = parseArgs(['mutation-result', '--report=r.json']);
     expect((args.command, args.report), ('mutation-result', 'r.json'));

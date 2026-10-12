@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:test/test.dart';
+import 'package:test_gates/src/commands/mutation.dart';
 
 import 'package_fixture.dart';
 
@@ -87,4 +88,34 @@ void main() {
       );
     });
   }
+
+  test('a tool that does not end after the signal is killed when its time '
+      'is up, and the message says what that can leave behind', () async {
+    package.write('fake.json', jsonEncode({'hang': true, 'deaf': true}));
+    final exit = runMutation(
+      package.dir.path,
+      null,
+      const [],
+      package.io,
+      candidates: [
+        ['${package.dir.path}/bin/dart_mutant'],
+      ],
+      grace: const Duration(seconds: 2),
+    );
+    final started = package.file('started');
+    while (!started.existsSync() || started.readAsStringSync().isEmpty) {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    }
+    final tool = int.parse(started.readAsStringSync());
+    Process.killPid(pid, ProcessSignal.sighup);
+    expect(await exit, 129);
+    expect(package.err, [
+      'test_gates mutation: dart_mutant did not end within 2 seconds of the '
+          'signal and was killed. It may not have put back what it changed: '
+          'look at "git status" for a gate with a mutant in it',
+      'test_gates mutation: interrupted. Nothing was judged',
+    ]);
+    expect(package.read('signals.log').trim(), '${ProcessSignal.sighup}');
+    expect(alive(tool), isFalse, reason: 'the tool is still there');
+  });
 }

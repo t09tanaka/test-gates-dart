@@ -27,6 +27,10 @@ class ParsedArgs {
   /// result of an earlier run.
   bool force = false;
 
+  /// `--not-evaluable` (mutation, mutation-result): the mutants that could
+  /// not be evaluated are listed, not only counted.
+  bool notEvaluable = false;
+
   /// `--gate` (mutation, mutation-result), once per gate: only these gates
   /// are run and judged. Empty means every gate.
   List<String> gates = const [];
@@ -52,8 +56,8 @@ const _optionsByCommand = {
   'check': ['--dir'],
   'test': ['--dir', '--file'],
   'selfcheck': ['--dir', '--file', '--all', '--first'],
-  'mutation': ['--dir', '--report', '--force', '--gate'],
-  'mutation-result': ['--dir', '--report', '--gate'],
+  'mutation': ['--dir', '--report', '--force', '--gate', '--not-evaluable'],
+  'mutation-result': ['--dir', '--report', '--gate', '--not-evaluable'],
 };
 
 /// The commands that take something after `--`: a command to run, or (for
@@ -109,6 +113,10 @@ int _consume(
     }
     if (name == '--force') {
       parsed.force = true;
+      return index;
+    }
+    if (name == '--not-evaluable') {
+      parsed.notEvaluable = true;
       return index;
     }
     final mode = name == '--all' ? 'all' : 'first';

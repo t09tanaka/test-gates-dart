@@ -384,14 +384,28 @@ void main() {
         ),
         2,
       );
-      expect(package.err, [
-        'test_gates mutation: dart_mutant was not found (tried '
-            '"test_gates_no_such_program" and '
-            '"${Platform.resolvedExecutable} no_such_script.dart"). It is '
-            'the tool that makes the mutants and runs the tests on them. '
-            'Install it with:',
+      expect(package.err.take(4), [
+        'test_gates mutation: dart_mutant was not found. It is the tool '
+            'that makes the mutants and runs the tests on them. Install it '
+            'with:',
         '  dart pub global activate dart_mutant',
+        'What was tried:',
+        startsWith(
+          '  - "test_gates_no_such_program --version" could not be started (',
+        ),
       ]);
+      // The dart that is there, and what it said about the missing script.
+      expect(package.err, hasLength(5));
+      expect(
+        package.err.last,
+        allOf(
+          startsWith(
+            '  - "${Platform.resolvedExecutable} no_such_script.dart '
+            '--version" ended with exit code ',
+          ),
+          contains(' and printed "'),
+        ),
+      );
       expect(runs(), isEmpty);
     });
 
@@ -400,10 +414,20 @@ void main() {
       tool({'version': 'Dart SDK version: 3.9.0'});
       expect(await mutation(), 2);
       expect(package.err.first, contains('dart_mutant was not found'));
+      expect(
+        package.err.last,
+        '  - "${fake.join(' ')} --version" ended with exit code 0 and '
+        'printed "Dart SDK version: 3.9.0"',
+      );
       package.err.clear();
       tool({'version': '0.1.0', 'versionExit': 1});
       expect(await mutation(), 2);
       expect(package.err.first, contains('dart_mutant was not found'));
+      expect(
+        package.err.last,
+        '  - "${fake.join(' ')} --version" ended with exit code 1 and '
+        'printed "0.1.0"',
+      );
       expect(runs(), isEmpty);
     });
 
@@ -724,6 +748,79 @@ void main() {
         'test_gates mutation: FAILED (mutants 0 / detected 0 (timeout 0) / '
             'allowed equivalent 0 / not evaluable 0 / unallowed survivors 0)',
       ]);
+    });
+  });
+
+  group('--not-evaluable', () {
+    final report = reportOf({
+      'lib/a.dart': [
+        {
+          ...plus('CompileError'),
+          'statusReason': "The operator '-' isn't defined\n  for the type.",
+        },
+      ],
+      'lib/b.dart': [times('Killed'), minus('RuntimeError')],
+    });
+    const summary =
+        'test_gates mutation: OK (mutants 3 / detected 1 (timeout 0) / '
+        'allowed equivalent 0 / not evaluable 2 / unallowed survivors 0)';
+
+    test('without it the mutants that could not be evaluated are '
+        'counted', () async {
+      tool({'report': report});
+      expect(await mutation(), 0);
+      expect(package.out, [summary]);
+    });
+
+    test('with it they are listed, with what the tool says about them, and '
+        'the verdict is the same', () async {
+      tool({'report': report});
+      expect(
+        await runMutation(
+          package.dir.path,
+          null,
+          const [],
+          package.io,
+          listNotEvaluable: true,
+          candidates: [fake],
+        ),
+        0,
+      );
+      const listed = [
+        'test_gates mutation: 2 mutant(s) could not be evaluated (they are '
+            'not programs, so no test was run on them):',
+        '  ~ lib/a.dart:1:19 / ArithmeticOperator / + → - (CompileError)',
+        "      The operator '-' isn't defined for the type.",
+        '  ~ lib/b.dart:1:23 / ArithmeticOperator / - → + (RuntimeError)',
+        summary,
+      ];
+      expect(package.out, listed);
+      expect(package.err, isEmpty);
+      package.out.clear();
+      expect(
+        run([
+          'mutation-result',
+          '--dir',
+          package.dir.path,
+          '--not-evaluable',
+        ], package.io),
+        0,
+      );
+      expect(package.out, listed);
+    });
+
+    test('nothing is said when every mutant was evaluated', () {
+      package.write(reportFile, jsonEncode(everythingKilled));
+      expect(
+        run([
+          'mutation-result',
+          '--dir',
+          package.dir.path,
+          '--not-evaluable',
+        ], package.io),
+        0,
+      );
+      expect(package.out, [ok3]);
     });
   });
 

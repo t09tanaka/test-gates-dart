@@ -20,6 +20,7 @@ class ReportMutant {
     required this.start,
     required this.end,
     this.replacement,
+    this.statusReason,
   });
 
   final String mutatorName;
@@ -29,6 +30,10 @@ class ReportMutant {
   /// Exclusive.
   final ReportPosition end;
   final String? replacement;
+
+  /// What the tool says about the status, when it does: the message of the
+  /// compiler for a mutant that does not compile.
+  final String? statusReason;
 }
 
 /// The mutants of one file, with the source they were made from.
@@ -129,6 +134,7 @@ MutationReport parseMutationReport(String text) {
           start: start,
           end: end,
           replacement: replacement as String?,
+          statusReason: asText(mutant['statusReason']),
         ),
       );
     }
@@ -157,6 +163,7 @@ class ListedMutant {
     required this.replacement,
     required this.occurrence,
     required this.sameKeyCount,
+    this.statusReason,
   });
 
   final String file;
@@ -174,6 +181,9 @@ class ListedMutant {
   /// How many mutants of the file share that key. `occurrence` is required
   /// when this is > 1.
   final int sameKeyCount;
+
+  /// What the report says about the status, or `null`.
+  final String? statusReason;
 
   /// The entry that would cover this mutant, with an empty `reason`.
   Map<String, Object?> get allowance => {
@@ -218,6 +228,10 @@ class MutationVerdict {
   /// Timed-out mutants that no `expectedTimeouts` entry covers. When there
   /// are more of them than `maxTimeouts`, [violations] says so.
   final unexpectedTimeouts = <ListedMutant>[];
+
+  /// The mutants that could not be evaluated (CompileError, RuntimeError).
+  /// They do not fail the run; the summary counts them.
+  final notEvaluable = <ListedMutant>[];
   final summary = MutationSummary();
 }
 
@@ -298,6 +312,7 @@ class _Located {
     replacement: normalizeCode(replacement),
     occurrence: occurrence,
     sameKeyCount: sameKeyCount,
+    statusReason: mutant.statusReason,
   );
 }
 
@@ -533,6 +548,7 @@ MutationVerdict judgeMutationReport({
         }
       } else if (_notEvaluable.contains(mutant.status)) {
         summary.notEvaluable++;
+        verdict.notEvaluable.add(entry.listed(gate.path));
       } else if (_survived.contains(mutant.status)) {
         if (allowed.contains(entry)) {
           summary.allowed++;

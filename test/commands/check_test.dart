@@ -240,6 +240,60 @@ void f() => print(home);
       ]);
     });
 
+    test('what a gate reaches through the files it imports is checked, '
+        'with the way there', () {
+      manifest(
+        ['lib/a.dart', 'lib/b.dart'],
+        settings: {
+          'spec': {'suffixes': <String>[]},
+        },
+      );
+      write('pubspec.yaml', 'name: app\n');
+      write('lib/a.dart', "import 'src/fees.dart';\n");
+      write('lib/b.dart', "import 'package:app/src/fees.dart';\n");
+      write('lib/src/fees.dart', "export 'clock.dart';\n");
+      write('lib/src/clock.dart', "import 'dart:io';\n\nimport 'gone.dart';\n");
+      expect(check(), 1);
+      expect(err, [
+        'test_gates check: 4 violation(s)',
+        '  - lib/a.dart:1: import of "src/fees.dart" reaches '
+            'lib/src/clock.dart:1: import of "dart:io" (file system / '
+            'network / process access) (lib/a.dart → lib/src/fees.dart → '
+            'lib/src/clock.dart)',
+        '  - lib/a.dart:1: import of "src/fees.dart" reaches '
+            'lib/src/gone.dart, which cannot be read, so what it brings in '
+            'cannot be checked (lib/a.dart → lib/src/fees.dart → '
+            'lib/src/clock.dart → lib/src/gone.dart)',
+        '  - lib/b.dart:1: import of "package:app/src/fees.dart" reaches '
+            'lib/src/clock.dart:1: import of "dart:io" (file system / '
+            'network / process access) (lib/b.dart → lib/src/fees.dart → '
+            'lib/src/clock.dart)',
+        '  - lib/b.dart:1: import of "package:app/src/fees.dart" reaches '
+            'lib/src/gone.dart, which cannot be read, so what it brings in '
+            'cannot be checked (lib/b.dart → lib/src/fees.dart → '
+            'lib/src/clock.dart → lib/src/gone.dart)',
+      ]);
+    });
+
+    test('a file that is reached is found by its exact spelling', () {
+      manifest(
+        ['lib/a.dart'],
+        settings: {
+          'spec': {'suffixes': <String>[]},
+        },
+      );
+      write('lib/a.dart', "import 'Fees.dart';\n");
+      write('lib/fees.dart', 'const fee = 1;\n');
+      expect(check(), 1);
+      expect(
+        err[1],
+        startsWith(
+          '  - lib/a.dart:1: import of "Fees.dart" reaches lib/Fees.dart, '
+          'which cannot be read',
+        ),
+      );
+    });
+
     test('allowlist mode knows the package from pubspec.yaml', () {
       manifest(
         ['lib/a.dart'],
@@ -253,6 +307,7 @@ void f() => print(home);
         'lib/a.dart',
         "import 'package:app/b.dart';\nimport 'package:other/b.dart';\n",
       );
+      write('lib/b.dart', 'const b = 1;\n');
       expect(check(), 1);
       expect(err.skip(1), [
         startsWith(

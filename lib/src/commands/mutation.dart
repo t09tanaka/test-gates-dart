@@ -25,10 +25,12 @@ String? _readOrNull(String path) {
 }
 
 /// The first of [candidates] that answers `--version` as the tool does, with
-/// the version it gave; `null` when none does.
+/// the version it gave; `null` when none does. What each of the others did
+/// is added to [attempts].
 Future<({List<String> command, String version})?> _findDartMutant(
   List<List<String>> candidates,
   String dir,
+  List<String> attempts,
 ) async {
   for (final command in candidates) {
     final ProcessResult result;
@@ -39,7 +41,8 @@ Future<({List<String> command, String version})?> _findDartMutant(
         workingDirectory: dir,
         runInShell: Platform.isWindows,
       );
-    } on ProcessException {
+    } on ProcessException catch (error) {
+      attempts.add(describeAttempt(command, startError: error.message));
       continue;
     }
     final version = dartMutantVersionOf(
@@ -49,6 +52,13 @@ Future<({List<String> command, String version})?> _findDartMutant(
     if (version != null) {
       return (command: command, version: version);
     }
+    attempts.add(
+      describeAttempt(
+        command,
+        exitCode: result.exitCode,
+        output: '${result.stdout}\n${result.stderr}',
+      ),
+    );
   }
   return null;
 }
@@ -61,9 +71,10 @@ Future<({List<String> command, String version})?> _findDartMutant(
 /// [rest] (what follows `--`) is handed to `dart_mutant run` as it is.
 /// [force] becomes its `--force`, and [only] (`--gate`) its `--only`.
 ///
-/// [candidates] are the commands that are tried to start the tool. It is a
-/// parameter for the tests of this package only; the command line always
-/// uses [dartMutantCommands].
+/// [candidates] are the commands that are tried to start the tool, and
+/// [grace] is how long the tool gets to end after a signal. They are
+/// parameters for the tests of this package only; the command line always
+/// uses [dartMutantCommands] and [handOverGrace].
 ///
 /// Returns the exit code: 0 when every mutant is detected or allowed, 1
 /// otherwise, 2 when the tool is missing, is not a supported version or
@@ -75,7 +86,9 @@ Future<int> runMutation(
   Io io, {
   bool force = false,
   List<String> only = const [],
+  bool listNotEvaluable = false,
   List<List<String>>? candidates,
+  Duration grace = handOverGrace,
 }) async {
   final manifest = readManifest(dir);
   // Wrong usage changes nothing and starts nothing.
@@ -86,15 +99,18 @@ Future<int> runMutation(
   }
 
   final tried = candidates ?? dartMutantCommands(Platform.resolvedExecutable);
-  final found = await _findDartMutant(tried, manifest.dir);
+  final attempts = <String>[];
+  final found = await _findDartMutant(tried, manifest.dir, attempts);
   if (found == null) {
     io.err(
-      '$executable mutation: $dartMutant was not found (tried '
-      '${tried.map((command) => '"${command.join(' ')}"').join(' and ')}). '
-      'It is the tool that makes the mutants and runs the tests on them. '
-      'Install it with:',
+      '$executable mutation: $dartMutant was not found. It is the tool that '
+      'makes the mutants and runs the tests on them. Install it with:',
     );
     io.err('  $dartMutantInstall');
+    io.err('What was tried:');
+    for (final attempt in attempts) {
+      io.err('  - $attempt');
+    }
     return 2;
   }
   if (!isSupportedDartMutant(found.version)) {
@@ -195,11 +211,20 @@ Future<int> runMutation(
         capture: false,
         signals: signals,
         handOver: true,
+        grace: grace,
       );
     } finally {
       await signals.cancel();
     }
     if (result.signal != null) {
+      if (result.killed) {
+        io.err(
+          '$executable mutation: $dartMutant did not end within '
+          '${grace.inSeconds} seconds of the signal and was killed. It may '
+          'not have put back what it changed: look at "git status" for a '
+          'gate with a mutant in it',
+        );
+      }
       io.err('$executable mutation: interrupted. Nothing was judged');
       return signalExitCode(result.signal!);
     }
@@ -271,5 +296,6 @@ Future<int> runMutation(
     io,
     gateFailures: failures,
     only: selected,
+    listNotEvaluable: listNotEvaluable,
   );
 }

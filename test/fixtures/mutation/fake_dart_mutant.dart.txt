@@ -19,6 +19,8 @@
 //                          the signal to "signals.log", takes a second to
 //                          "put files back", writes "put-back" and exits
 //                          with 130 / 143 / 129
+//   "deaf": true           with "hang": the run notes the signal and does
+//                          not end
 //
 // A run appends its arguments to "runs.log", copies the plan it was given
 // to "plan.seen.json", and the report that was at --report before it wrote
@@ -70,6 +72,9 @@ Future<void> main(List<String> arguments) async {
           return;
         }
         got = true;
+        if (fake['deaf'] == true) {
+          return;
+        }
         await Future<void>.delayed(const Duration(seconds: 1));
         File('put-back').writeAsStringSync('yes');
         exit(code);

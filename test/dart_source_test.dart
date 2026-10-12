@@ -486,4 +486,58 @@ void main() {
       );
     });
   });
+
+  group('code: the source with its comments blanked', () {
+    test('every kind of comment becomes blanks of the same length; the '
+        'code, strings included, stays', () {
+      const source =
+          '// first\n'
+          'final a = 1; // tail\n'
+          '/// doc [a]\n'
+          "final b = '// not a comment'; /* in */ final c = 2;\n"
+          '/* over\n'
+          '   two lines */ final d = 3;\n'
+          '// last';
+      expect(
+        parseDartSource(source).code,
+        '        \n'
+        'final a = 1;        \n'
+        '           \n'
+        "final b = '// not a comment';          final c = 2;\n"
+        '       \n'
+        '                final d = 3;\n'
+        '       ',
+      );
+    });
+
+    test('a source without a comment is itself', () {
+      const source = 'final a = 1;\n\nint f() => a;\n';
+      expect(parseDartSource(source).code, source);
+      expect(parseDartSource('').code, '');
+    });
+
+    test('lines keep their numbers with CRLF, and a comment that holds a '
+        'line break keeps the break', () {
+      const source = '/* a\r\n b */\r\nfinal a = 1; // x\r\n';
+      final code = parseDartSource(source).code;
+      expect(code, '    \r\n     \r\nfinal a = 1;     \r\n');
+      expect(code.length, source.length);
+    });
+
+    test('a byte order mark is not part of it', () {
+      expect(
+        parseDartSource('﻿// a\nfinal a = 1;\n').code,
+        '    \n'
+        'final a = 1;\n',
+      );
+    });
+
+    test('comments only, and a comment in front of a directive', () {
+      expect(parseDartSource('// a\n// b\n').code, '    \n    \n');
+      expect(
+        parseDartSource("// a\nimport 'dart:math'; // b\n").code,
+        "    \nimport 'dart:math';     \n",
+      );
+    });
+  });
 }

@@ -17,9 +17,24 @@ const defaultMaxTimeouts = 0;
 const defaultImpureImports = [
   (r'^package:flutter/', 'Flutter framework'),
   (r'^package:(flutter_[^/]*|[^/]*_flutter)/', 'Flutter plugin or UI package'),
+  // Packages that are widgets or navigation, and are not named flutter_*.
+  (
+    r'^package:(go_router|auto_route|cached_network_image|google_fonts)/',
+    'Flutter plugin or UI package',
+  ),
+  // Plugins that ask the device or the system: each call leaves the process.
+  (
+    r'^package:(connectivity_plus|device_info_plus|package_info_plus|share_plus|battery_plus|sensors_plus|network_info_plus|url_launcher|permission_handler|geolocator|image_picker|file_picker|local_auth)/',
+    'device or platform access',
+  ),
   (r'^dart:(ui|ui_web)$', 'Flutter engine'),
   (
     r'^dart:(io|ffi|isolate|mirrors)$',
+    'file system / network / process access',
+  ),
+  // The same as dart:io, as packages: files, processes, the environment.
+  (
+    r'^package:(file|process|platform)/',
     'file system / network / process access',
   ),
   (
@@ -28,11 +43,11 @@ const defaultImpureImports = [
   ),
   (r'^package:(web|js)/', 'browser API'),
   (
-    r'^package:(http|dio|retrofit|chopper|graphql|grpc|web_socket_channel)/',
+    r'^package:(http|dio|retrofit|chopper|graphql|grpc|web_socket_channel|socket_io_client|mqtt_client)/',
     'HTTP client',
   ),
   (
-    r'^package:(shared_preferences|sqflite|hive|hive_ce|isar|drift|sembast|objectbox|path_provider)/',
+    r'^package:(shared_preferences|sqflite|hive|hive_ce|isar|drift|sembast|objectbox|path_provider|get_storage|realm|floor)/',
     'persistence',
   ),
   (
@@ -40,11 +55,11 @@ const defaultImpureImports = [
     'database client',
   ),
   (
-    r'^package:(bloc|provider|riverpod|hooks_riverpod|riverpod_annotation|get|get_it|mobx|redux|rxdart)/',
+    r'^package:(bloc|provider|riverpod|hooks_riverpod|riverpod_annotation|get|get_it|mobx|redux|rxdart|hydrated_bloc|replay_bloc|state_notifier|signals|async_redux|watch_it|stacked)/',
     'state management',
   ),
   (
-    r'^package:(firebase_[^/]*|cloud_firestore|cloud_functions|sentry)/',
+    r'^package:(firebase_[^/]*|cloud_firestore|cloud_functions|sentry|supabase|appwrite|googleapis|google_sign_in|in_app_purchase)/',
     'external service SDK',
   ),
 ];

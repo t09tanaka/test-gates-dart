@@ -56,6 +56,7 @@ class CommandResult {
     this.startError,
     this.signal,
     this.timedOut = false,
+    this.killed = false,
   });
 
   /// `null` when the command could not be started or was interrupted.
@@ -72,6 +73,10 @@ class CommandResult {
 
   /// True when the command was ended because it ran longer than its limit.
   final bool timedOut;
+
+  /// True when the command was handed a signal, did not end within its
+  /// grace, and was killed: it may not have put back what it changed.
+  final bool killed;
 }
 
 /// The processes that descend from [root], as `ps` lists them now. Empty on
@@ -156,8 +161,8 @@ List<int> _stillThere(List<int> pids) {
 /// that has ended already has no descendants any more, and the tool it
 /// started is still at work.
 ///
-/// What is still there after [grace] is killed.
-Future<void> _handOver(
+/// What is still there after [grace] is killed; the result is then `true`.
+Future<bool> _handOver(
   Process process,
   ProcessSignal? signal,
   Duration grace,
@@ -179,7 +184,7 @@ Future<void> _handOver(
     // given to another process, which is not ours to end.
     descendants = _stillThere(descendants);
     if (exited && descendants.isEmpty) {
-      return;
+      return false;
     }
   }
   if (!exited) {
@@ -188,11 +193,12 @@ Future<void> _handOver(
   for (final pid in descendants) {
     Process.killPid(pid, ProcessSignal.sigkill);
   }
+  return true;
 }
 
 /// How long a tool that was handed a signal gets to put things back. It
 /// ends its own test runs first, each with a grace of its own.
-const _handOverGrace = Duration(seconds: 60);
+const handOverGrace = Duration(seconds: 60);
 
 /// How long a child gets to end after SIGTERM before it is killed.
 const _killGrace = Duration(seconds: 10);
@@ -228,7 +234,8 @@ const _signalGrace = Duration(milliseconds: 250);
 ///
 /// With [handOver] a signal is not answered by ending the command: the
 /// signal is passed on to it and to every process that descends from it, and
-/// they are waited for, because the command puts files back itself.
+/// they are waited for, because the command puts files back itself. What is
+/// still there after [grace] is killed, and the result says so.
 Future<CommandResult> runCommand(
   List<String> command, {
   required String workingDirectory,
@@ -236,6 +243,7 @@ Future<CommandResult> runCommand(
   required SignalWatch signals,
   Duration? timeout,
   bool handOver = false,
+  Duration grace = handOverGrace,
 }) async {
   final Process process;
   try {
@@ -283,12 +291,17 @@ Future<CommandResult> runCommand(
   timer?.cancel();
   watch?.cancel();
   if (ended is ProcessSignal) {
+    var killed = false;
     if (handOver) {
-      await _handOver(process, ended, _handOverGrace, seen);
+      killed = await _handOver(process, ended, grace, seen);
     } else {
       await _endTree(process, _killGrace);
     }
-    return CommandResult(output: output.toString(), signal: ended);
+    return CommandResult(
+      output: output.toString(),
+      signal: ended,
+      killed: killed,
+    );
   }
   if (ended is _LimitReached) {
     await _endTree(process, _limitGrace);
@@ -304,15 +317,17 @@ Future<CommandResult> runCommand(
       signals.received,
     ]);
   }
+  var killed = false;
   if (handOver && signals.signal != null) {
     // The signal reached the command before it was seen here (Ctrl-C goes
     // to both), and what was started has ended: a launcher, perhaps. The
     // tool behind it has the signal as well, and is waited for.
-    await _handOver(process, null, _handOverGrace, seen);
+    killed = await _handOver(process, null, grace, seen);
   }
   return CommandResult(
     exitCode: signals.signal == null ? ended as int : null,
     output: output.toString(),
     signal: signals.signal,
+    killed: killed,
   );
 }

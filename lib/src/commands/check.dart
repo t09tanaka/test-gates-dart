@@ -28,6 +28,18 @@ List<Violation> checkGates(LoadedManifest manifest) {
   final settings = manifest.settings;
   final packageName = _packageName(dir);
   final violations = [...manifest.violations];
+  // A file that several gates reach is read once.
+  final sources = <String, String?>{};
+  String? readSource(String path) => sources.putIfAbsent(path, () {
+    if (!existsExact(dir, path)) {
+      return null;
+    }
+    try {
+      return _read(dir, path);
+    } on FileSystemException {
+      return null;
+    }
+  });
 
   for (final gate in manifest.gates) {
     final path = gate.path;
@@ -83,6 +95,7 @@ List<Violation> checkGates(LoadedManifest manifest) {
         _read(dir, path),
         settings,
         packageName: packageName,
+        readSource: readSource,
       ),
     );
 

@@ -27,6 +27,7 @@ int runMutationResult(
   String? reportOption,
   Io io, {
   List<String> only = const [],
+  bool listNotEvaluable = false,
 }) {
   final manifest = readManifest(dir);
   return judgeReportFile(
@@ -34,6 +35,7 @@ int runMutationResult(
     reportFileOf(manifest, reportOption),
     io,
     only: selectedGatesOf(manifest, only),
+    listNotEvaluable: listNotEvaluable,
   );
 }
 
@@ -67,6 +69,7 @@ int judgeReportFile(
   Io io, {
   Map<String, String> gateFailures = const {},
   List<String>? only,
+  bool listNotEvaluable = false,
 }) {
   final gates = [
     for (final gate in manifest.gates)
@@ -125,6 +128,21 @@ int judgeReportFile(
       if (!gateFailures.containsKey(violation.file)) violation,
   ];
   final summary = formatSummary(verdict.summary);
+
+  // Not a failure: shown on request, before the verdict.
+  if (listNotEvaluable && verdict.notEvaluable.isNotEmpty) {
+    io.out(
+      '$executable mutation: ${verdict.notEvaluable.length} mutant(s) '
+      'could not be evaluated (they are not programs, so no test was run '
+      'on them):',
+    );
+    for (final mutant in verdict.notEvaluable) {
+      io.out('  ~ ${formatListedMutant(mutant)}');
+      if (mutant.statusReason case final reason?) {
+        io.out('      ${normalizeCode(reason)}');
+      }
+    }
+  }
 
   if (violations.isEmpty && verdict.survivors.isEmpty) {
     io.out('$executable mutation: OK$scope ($summary)');

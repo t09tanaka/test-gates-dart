@@ -43,6 +43,28 @@ List<List<String>> dartMutantCommands(String dart) => [
   [dart, 'pub', 'global', 'run', dartMutant],
 ];
 
+/// What one of the commands that were tried did, for the message that says
+/// that the tool was not found: [startError] when it could not be started,
+/// else its exit code and the first line it printed. A command that is
+/// there and answers with something else than a version is then told apart
+/// from one that is missing.
+String describeAttempt(
+  List<String> command, {
+  String? startError,
+  int? exitCode,
+  String output = '',
+}) {
+  final shown = '"${[...command, '--version'].join(' ')}"';
+  if (startError != null) {
+    return '$shown could not be started ($startError)';
+  }
+  final lines = output.split('\n').map((line) => line.trim());
+  final first = lines.firstWhere((line) => line.isNotEmpty, orElse: () => '');
+  final printed = first.length > 200 ? '${first.substring(0, 200)}…' : first;
+  return '$shown ended with exit code $exitCode and printed '
+      '${printed.isEmpty ? 'nothing' : '"$printed"'}';
+}
+
 final _version = RegExp(r'^(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.+-]*)?$');
 
 /// The version a command answered `--version` with, or `null` when what it
