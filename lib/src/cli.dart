@@ -29,8 +29,8 @@ Commands:
 Options:
   --dir <package>             Directory that holds test-gates.json (default: .)
   --file <path>               lcov, test, selfcheck: tracefile (default: settings.lcov.file)
-  --selfcheck                 test: the same run is also the negative control (selfcheck), with a
-                              probe in every gate; one run of the tests in place of two
+  --selfcheck                 test: the same run is also the negative control (selfcheck), with its
+                              probes in the gates; one run of the tests in place of two
   --all | --first             selfcheck: every gate (default) or only the first
   --all                       timezones: every gate, also one that does not name DateTime
   --zone <name>               timezones: a time zone to run in (may be given more than once;

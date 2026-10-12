@@ -323,23 +323,17 @@ void main() {
       expect(tracefileWithoutProbes(absolute, probes), absolute);
     });
 
-    test('a probe that is reported as executed stays, and so does its '
-        'total', () {
-      const executed =
-          'SF:lib/a.dart\nDA:9,1\nLF:1\nLH:1\nBRDA:9,0,0,1\nend_of_record\n';
-      expect(tracefileWithoutProbes(executed, probes), executed);
-      const half =
-          'SF:lib/a.dart\nDA:9,0\nLF:1\nLH:0\nBRDA:9,0,0,3\nend_of_record\n';
-      expect(
-        tracefileWithoutProbes(half, probes),
-        'SF:lib/a.dart\nLF:0\nLH:0\nBRDA:9,0,0,3\nend_of_record\n',
-      );
-      const otherHalf =
-          'SF:lib/a.dart\nDA:9,2\nLF:1\nLH:1\nBRDA:9,0,0,0\nend_of_record\n';
-      expect(
-        tracefileWithoutProbes(otherHalf, probes),
-        'SF:lib/a.dart\nDA:9,2\nLF:1\nLH:1\nend_of_record\n',
-      );
+    test('a probe that is reported as executed, as a line or as a branch, '
+        'keeps all its entries and its total', () {
+      for (final record in [
+        'SF:lib/a.dart\nDA:9,1\nLF:1\nLH:1\nBRDA:9,0,0,1\nend_of_record\n',
+        'SF:lib/a.dart\nDA:9,0\nLF:1\nLH:0\nBRDA:9,0,0,3\nend_of_record\n',
+        'SF:lib/a.dart\nDA:9,2\nLF:1\nLH:1\nBRDA:9,0,0,0\nend_of_record\n',
+        'SF:lib/a.dart\nDA:9,0\nBRDA:9,0,0,0\nBRDA:9,1,0,1\nend_of_record\n',
+        'SF:lib/a.dart\nDA:9,0\nDA:9,0.5\nLF:2\nend_of_record\n',
+      ]) {
+        expect(tracefileWithoutProbes(record, probes), record);
+      }
     });
 
     test('a branch that was never reached ("-") is taken out as well', () {
@@ -352,13 +346,54 @@ void main() {
       );
     });
 
-    test('only entries of the line of the probe, and only whole ones', () {
+    test('the entries are read as the judgement reads them: blanks, a '
+        'checksum behind the count, a count below zero', () {
+      expect(
+        tracefileWithoutProbes(
+          'SF:lib/a.dart\nDA: 9 , 0 \nDA:9,0,abc\nDA:9,-1\nLF:5\n'
+          'BRDA:9,0,0, 0\nBRDA: 9 ,1,0, - \nBRDA:9,0,0,0,x\nend_of_record\n',
+          probes,
+        ),
+        'SF:lib/a.dart\nLF:2\nend_of_record\n',
+      );
+    });
+
+    test('entries that are indented are read all the same, and a checksum '
+        'may hold a colon', () {
+      expect(
+        tracefileWithoutProbes(
+          'SF:lib/a.dart\n  DA:9,0,a:b\n\tLF:3\n  BRDA:9,0,0,0\n'
+          'end_of_record\n',
+          probes,
+        ),
+        'SF:lib/a.dart\n\tLF:2\nend_of_record\n',
+      );
+      const executed = 'SF:lib/a.dart\nDA:9,0\n  DA:9,1,a:b\nend_of_record\n';
+      expect(tracefileWithoutProbes(executed, probes), executed);
+      const taken = 'SF:lib/a.dart\nDA:9,0\n  BRDA:9,0,0,1\nend_of_record\n';
+      expect(tracefileWithoutProbes(taken, probes), taken);
+    });
+
+    test('a line of another kind that looks like an entry behind its name '
+        'is none', () {
+      const kept = 'SF:lib/a.dart\nZZ:9,0\nZZZZ:9,0,0,0\nend_of_record\n';
+      expect(tracefileWithoutProbes(kept, probes), kept);
+      // And it does not stand for "the probe was executed" either.
+      expect(
+        tracefileWithoutProbes(
+          'SF:lib/a.dart\nZZ:9,5\nZZZZ:9,0,0,5\nDA:9,0\nend_of_record\n',
+          probes,
+        ),
+        'SF:lib/a.dart\nZZ:9,5\nZZZZ:9,0,0,5\nend_of_record\n',
+      );
+    });
+
+    test('only entries of the line of the probe, and only ones that can be '
+        'read', () {
       const others =
-          'SF:lib/a.dart\nDA:90,0\nDA:19,0\nDA:9\nDA:9,0,x\nDA:x,0\n'
-          'DA:9,00\nDA:9,-\nXDA:9,0\nDA:9,0X\nFNDA:9,0\n'
-          'BRDA:90,0,0,0\nBRDA:9,0,0\nBRDA:9,0,0,0,0\nBRDA:9,0,0,00\n'
-          'XBRDA:9,0,0,0\nBRDA:9,0,0,0X\nLF:x\nLF:3x\nXLF:3\nLH:0\n'
-          'end_of_record\n';
+          'SF:lib/a.dart\nDA:90,0\nDA:19,0\nDA:9\nDA:x,0\nDA:9,x\n'
+          'XDA:9,0\nFNDA:9,0\nBRDA:90,0,0,0\nBRDA:9,0,0\nBRDA:9,0,0,x\n'
+          'XBRDA:9,0,0,0\nLF:x\nLF:3x\nXLF:3\nLH:0\nFNF:x\nend_of_record\n';
       expect(tracefileWithoutProbes(others, probes), others);
     });
 
@@ -372,13 +407,57 @@ void main() {
         ),
         'SF:lib/a.dart\nLF:2\nend_of_record\n',
       );
-      // A total in front of the entries is not changed by them.
       expect(
         tracefileWithoutProbes(
           'SF:lib/a.dart\nLF:3\nDA:9,0\nend_of_record\n',
           probes,
         ),
-        'SF:lib/a.dart\nLF:3\nend_of_record\n',
+        'SF:lib/a.dart\nLF:2\nend_of_record\n',
+      );
+    });
+
+    test('with function coverage: the function of the probe and its count '
+        'go, FNF is one less, and other functions stay', () {
+      final name = probeFunctionName('lib/a.dart');
+      expect(
+        tracefileWithoutProbes(
+          'SF:lib/a.dart\nFN:1,a\nFN:9,$name\nFN:9,x$name\nFN:7,${name}x\n'
+          'FNDA:2,a\nFNDA:0,$name\nFNF:4\nFNH:1\nDA:1,2\nDA:9,0\nLF:2\nLH:1\n'
+          'end_of_record\n',
+          probes,
+        ),
+        'SF:lib/a.dart\nFN:1,a\nFN:9,x$name\nFN:7,${name}x\n'
+        'FNDA:2,a\nFNF:3\nFNH:1\nDA:1,2\nLF:1\nLH:1\nend_of_record\n',
+      );
+      // Two line entries and one function: each total loses its own.
+      expect(
+        tracefileWithoutProbes(
+          'SF:lib/a.dart\nFN:9,$name\nFNF:4\nDA:9,0\nDA:9,0\nLF:7\n'
+          'end_of_record\n',
+          probes,
+        ),
+        'SF:lib/a.dart\nFNF:3\nLF:5\nend_of_record\n',
+      );
+      // Only FN: and FNDA: entries, whatever else ends with the name.
+      final lookalikes =
+          'SF:lib/a.dart\nXFN:9,$name\nFNX:9,$name\nTN:,$name\n'
+          'end_of_record\n';
+      expect(tracefileWithoutProbes(lookalikes, probes), lookalikes);
+      // The function of the probe of another gate is not one of this gate.
+      final other = probeFunctionName('lib/b.dart');
+      final foreign = 'SF:lib/a.dart\nFN:3,$other\nFNF:1\nend_of_record\n';
+      expect(tracefileWithoutProbes(foreign, probes), foreign);
+    });
+
+    test('lines outside a record, in front of the first one and behind the '
+        'last, are left as they are', () {
+      const text =
+          'TN:\nLF:9\nDA:9,0\nSF:lib/a.dart\nDA:9,0\nLF:1\nend_of_record\n'
+          'LF:4\nDA:9,0\nFNF:2\n';
+      expect(
+        tracefileWithoutProbes(text, probes),
+        'TN:\nLF:9\nDA:9,0\nSF:lib/a.dart\nLF:0\nend_of_record\n'
+        'LF:4\nDA:9,0\nFNF:2\n',
       );
     });
 
@@ -395,6 +474,13 @@ void main() {
         'SF:lib/c.dart\nDA:9,0\nLF:1\nend_of_record\n'
         'SF:lib/b.dart\nLF:0\nend_of_record\n'
         'SF:lib/a.dart\nDA:1,1\nLF:1\nend_of_record\n',
+      );
+    });
+
+    test('a record that is not closed loses its probe as well', () {
+      expect(
+        tracefileWithoutProbes('SF:lib/a.dart\nDA:9,0\nLF:1', probes),
+        'SF:lib/a.dart\nLF:0',
       );
     });
 

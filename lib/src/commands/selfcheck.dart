@@ -243,7 +243,8 @@ Future<int> runSelfcheck(
         }
       } on FileSystemException catch (error) {
         restoreMessages.add(
-          '$tracefile: cannot put back the tracefile of before the run '
+          '$tracefile: cannot '
+          '${coverage ? 'write the tracefile of the run' : 'put back the tracefile of before the run'} '
           '(${error.osError?.message ?? error.message})',
         );
       }

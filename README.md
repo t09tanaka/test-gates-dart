@@ -416,12 +416,12 @@ test_gates lcov: OK (2 gate(s) at 100% line and branch coverage)
 
 1. The probes of `selfcheck` are appended to the gates, and `settings.gateCommand` is run once.
 2. The negative controls are judged on the tracefile of that run, as `selfcheck` judges them.
-3. The entries of the probes are taken out of the tracefile: for each gate the one line entry and the one branch entry at the line of its probe, and one off its `LF:` total. A probe is a function at the end of the file that nothing calls, so that is all it adds; what is left is the tracefile the command writes without probes. `test/commands/real_coverage_test.dart` runs `dart test` both ways and requires the same records.
-4. That tracefile is left behind, as after `test`, and judged as `lcov` judges it.
+3. The entries of the probes are taken out of the tracefile: for each gate the line entry and the branch entry at the line of its probe, and one off its `LF:` total (with function coverage also the `FN:` / `FNDA:` entries of the probe, and one off `FNF:`). A probe is a function at the end of the file that nothing calls, so that is all it adds; what is left is the tracefile the command writes without probes. `test/commands/real_coverage_test.dart` runs `dart test` both ways and requires the same records. The entries are only taken out when all of them say "not executed"; otherwise they stay, and the gate fails.
+4. That tracefile is left behind and judged as `lcov` judges it. (When the command fails, no tracefile is left: the one it wrote counts the probes.)
 
 The exit code is 0 when every control held and every gate is at 100%. Each of the two verdicts is the one its own command gives; nothing is decided differently. What differs from `test`: the output of the test command is not shown as it comes (it is captured, and its last lines are printed when it fails), and the gates are changed in place for the length of the run, with everything [`selfcheck` says about that](#your-files-during-the-run). `settings.selfcheck.mode: "first"` puts a probe in the first gate only.
 
-What it saves is one run of the tests. Measured with Dart 3.13.2 on a Mac with 12 logical processors, the medians of `test` followed by `selfcheck`, and of `test --selfcheck`: 6.1 s and 2.1 s in [`example/`](example) (five runs each), 95 s and 51 s for this package (three runs each).
+What it saves is one of two runs of the tests with coverage: about half the time of `test` followed by `selfcheck`, in [`example/`](example) and for this package.
 
 | Exit code | Meaning                                                                    |
 | --------- | -------------------------------------------------------------------------- |
