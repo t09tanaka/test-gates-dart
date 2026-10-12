@@ -187,11 +187,10 @@ List<String> _recordWithoutProbe(
   int probeLine,
   String probeName,
 ) {
-  final atProbe = [
-    for (final line in lines)
-      if (_entry(line.trim()) case final entry? when entry.line == probeLine)
-        entry,
-  ];
+  final atProbe = lines
+      .map((line) => _entry(line.trim()))
+      .whereType<({int line, num hits})>()
+      .where((entry) => entry.line == probeLine);
   if (atProbe.any((entry) => entry.hits > 0)) {
     return lines;
   }
