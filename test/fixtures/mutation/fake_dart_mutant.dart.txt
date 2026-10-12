@@ -21,6 +21,15 @@
 //                          with 130 / 143 / 129
 //   "deaf": true           with "hang": the run notes the signal and does
 //                          not end
+//   "launcher": true       the run is a launcher that ends before the tool
+//                          behind it: it starts this script once more as
+//                          that tool, lets it get to work, and ends with
+//                          143. The tool waits until the launcher is gone,
+//                          then sends SIGTERM to the process that started
+//                          the launcher (as a terminal sends a signal to
+//                          all of them, and the launcher happens to end
+//                          first), takes a second to "put files back",
+//                          writes "put-back" and ends
 //
 // A run appends its arguments to "runs.log", copies the plan it was given
 // to "plan.seen.json", and the report that was at --report before it wrote
@@ -47,6 +56,36 @@ Future<void> main(List<String> arguments) async {
     '${arguments.join(' ')}\n',
     mode: FileMode.append,
   );
+  if (arguments.first == '--tool-behind-launcher') {
+    // <pid of the launcher> <pid of what started the launcher>
+    final launcher = arguments[1];
+    final starter = int.parse(arguments[2]);
+    File('started').writeAsStringSync('$pid');
+    while (Process.runSync('kill', ['-0', launcher]).exitCode == 0) {
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    Process.killPid(starter, ProcessSignal.sigterm);
+    await Future<void>.delayed(const Duration(seconds: 1));
+    File('put-back').writeAsStringSync('yes');
+    return;
+  }
+  if (fake['launcher'] == true) {
+    final parent = (Process.runSync('ps', ['-o', 'ppid=', '-p', '$pid']).stdout
+            as String)
+        .trim();
+    await Process.start(Platform.resolvedExecutable, [
+      Platform.script.toFilePath(),
+      '--tool-behind-launcher',
+      '$pid',
+      parent,
+    ], mode: ProcessStartMode.inheritStdio);
+    while (!File('started').existsSync()) {
+      await Future<void>.delayed(const Duration(milliseconds: 25));
+    }
+    // Long enough for the one who started this to have seen the tool.
+    await Future<void>.delayed(const Duration(milliseconds: 1500));
+    exit(143);
+  }
   final plan = valueOf(arguments, '--plan');
   if (plan != null) {
     File(plan).copySync('plan.seen.json');

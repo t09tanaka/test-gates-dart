@@ -2,9 +2,9 @@ import '../types.dart';
 
 /// Where a command writes. Injected, so that commands can be tested.
 ///
-/// The output of the command that `test` starts (the test runner) does not
-/// go through here: it is written to the standard output and error of the
-/// process as it comes.
+/// The output of the commands that `test` and `mutation` start (the test
+/// runner, `dart_mutant`) does not go through here: it is written to the
+/// standard output and error of the process as it comes.
 class Io {
   /// Writes results with [out] and violations and errors with [err], one
   /// call per line. The command line passes `stdout.writeln` and
