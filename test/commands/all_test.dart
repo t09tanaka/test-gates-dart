@@ -46,8 +46,8 @@ void main() {
   Future<({int code, List<String> out, List<String> err, String? tracefile})>
   oneByOne(List<List<String>> commands) async {
     var code = 0;
-    for (final command in commands) {
-      code = await run(command);
+    for (final check in commands) {
+      code = await run(check);
       if (code != 0) {
         break;
       }
