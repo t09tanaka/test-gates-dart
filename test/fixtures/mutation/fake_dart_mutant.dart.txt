@@ -80,7 +80,7 @@ Future<void> main(List<String> arguments) async {
       parent,
     ], mode: ProcessStartMode.inheritStdio);
     while (!File('started').existsSync()) {
-      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await Future<void>.delayed(const Duration(milliseconds: 25));
     }
     // Long enough for the one who started this to have seen the tool.
     await Future<void>.delayed(const Duration(milliseconds: 1500));
