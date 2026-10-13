@@ -69,6 +69,9 @@ void main() {
     File(
       'test/fixtures/mutation/fake_dart_mutant.dart.txt',
     ).copySync('${package.dir.path}/fake_dart_mutant.dart');
+    File(
+      'test/fixtures/mutation/fake_fetch.dart.txt',
+    ).copySync('${package.dir.path}/fake_fetch.dart');
     package.write('lib/a.dart', sourceA);
     package.write('lib/b.dart', sourceB);
     package.write('lib/a_test.dart', '');
@@ -91,6 +94,7 @@ void main() {
     List<String> only = const [],
     String? report,
     List<List<String>>? candidates,
+    Map<String, String>? environment,
   }) => runMutation(
     package.dir.path,
     report,
@@ -98,7 +102,11 @@ void main() {
     package.io,
     force: force,
     only: only,
-    candidates: candidates ?? [fake],
+    // With an environment the tool is looked for as the command line does
+    // it, with a stand-in for the command that fetches it.
+    candidates: environment == null ? candidates ?? [fake] : null,
+    fetch: [Platform.resolvedExecutable, 'fake_fetch.dart'],
+    environment: environment,
   );
 
   /// The command lines the tool was started with (without `--version`).
@@ -453,6 +461,206 @@ void main() {
       tool({'version': '0.2.7', 'report': everythingKilled});
       expect(await mutation(), 0);
     });
+  });
+
+  group('the tool is fetched', () {
+    const place = '.dart_tool/test_gates/dart_mutant/0.2';
+    const kept = '$place/dart_mutant.snapshot';
+    const fetching =
+        'test_gates mutation: fetching dart_mutant ^0.2.0 from pub.dev into '
+        '$kept (once per package)';
+    const byHand = [
+      'test_gates mutation: to use one you installed yourself, install it '
+          'and set TEST_GATES_DART_MUTANT to the path of its executable '
+          '(~/.pub-cache/bin/dart_mutant):',
+      "  dart pub global activate dart_mutant '^0.2.0'",
+    ];
+
+    /// The directories the stand-in was told to fetch into.
+    List<String> fetches() => package.file('fetch.log').existsSync()
+        ? package.file('fetch.log').readAsLinesSync()
+        : [];
+
+    test('not there yet: it is fetched into a cache of its own, only the '
+        'compiled program is kept, and it is started with the dart that '
+        'runs this program', () async {
+      tool({'report': everythingKilled});
+      expect(await mutation(environment: {}), 0);
+      expect(package.out, [fetching, ok3]);
+      expect(package.err, isEmpty);
+      // A temporary directory, which is gone, and not the cache of the user.
+      expect(fetches(), hasLength(1));
+      expect(fetches().single, isNot(Platform.environment['PUB_CACHE']));
+      expect(Directory(fetches().single).existsSync(), isFalse);
+      expect(
+        package.read(kept),
+        File(
+          'test/fixtures/mutation/fake_dart_mutant.dart.txt',
+        ).readAsStringSync(),
+      );
+      expect(
+        [for (final entry in package.file(kept).parent.listSync()) entry.path],
+        [package.file(kept).path],
+      );
+      expect(runs(), hasLength(1));
+    });
+
+    test('there already: nothing is fetched', () async {
+      tool({'report': everythingKilled});
+      expect(await mutation(environment: {}), 0);
+      package.out.clear();
+      expect(await mutation(environment: {}), 0);
+      expect(package.out, [ok3]);
+      expect(fetches(), hasLength(1));
+      expect(runs(), hasLength(2));
+    });
+
+    test('what is there is another version: it is fetched again', () async {
+      package.write(kept, package.read('fake_dart_mutant.dart'));
+      tool({
+        'version': '0.1.1',
+        'fetched': {'version': '0.2.3', 'report': everythingKilled},
+      });
+      expect(await mutation(environment: {}), 0);
+      expect(package.out, [fetching, ok3]);
+      expect(fetches(), hasLength(1));
+    });
+
+    test('what is there does not answer: it is fetched again', () async {
+      package.write(kept, 'not a program');
+      tool({'report': everythingKilled});
+      expect(await mutation(environment: {}), 0);
+      expect(package.out, [fetching, ok3]);
+      expect(package.read(kept), package.read('fake_dart_mutant.dart'));
+    });
+
+    test('it cannot be fetched: exit code 2, with what the command printed '
+        'and how the tool is installed by hand', () async {
+      tool({
+        'fetchExit': 69,
+        'fetchOutput': 'Got socket error trying to find package dart_mutant\n',
+        'report': everythingKilled,
+      });
+      package.write(reportFile, jsonEncode(everythingKilled));
+      expect(await mutation(environment: {}), 2);
+      expect(package.out, [fetching]);
+      expect(package.err, [
+        'test_gates mutation: dart_mutant ^0.2.0 could not be fetched from '
+            'pub.dev: "${Platform.resolvedExecutable} fake_fetch.dart" '
+            'ended with exit code 69',
+        '    Got socket error trying to find package dart_mutant',
+        ...byHand,
+      ]);
+      expect(package.file(place).existsSync(), isFalse);
+      expect(Directory(fetches().single).existsSync(), isFalse);
+      expect(runs(), isEmpty);
+      // Nothing was changed.
+      expect(package.file(reportFile).existsSync(), isTrue);
+    });
+
+    test(
+      'the command that fetches it leaves no program: exit code 2',
+      () async {
+        tool({'fetchNothing': true});
+        expect(await mutation(environment: {}), 2);
+        expect(package.err, [
+          'test_gates mutation: dart_mutant ^0.2.0 could not be fetched from '
+              'pub.dev: "${Platform.resolvedExecutable} fake_fetch.dart" did '
+              'not compile it',
+          ...byHand,
+        ]);
+        expect(runs(), isEmpty);
+      },
+    );
+
+    test('what was fetched does not answer as the tool: exit code 2', () async {
+      tool({
+        'fetched': {'version': 'something else'},
+      });
+      expect(await mutation(environment: {}), 2);
+      expect(package.err, [
+        'test_gates mutation: dart_mutant was fetched into $kept, and does '
+            'not answer as the tool does: '
+            '"${Platform.resolvedExecutable} $kept --version" ended with '
+            'exit code 0 and printed "something else"',
+        ...byHand,
+      ]);
+      expect(runs(), isEmpty);
+    });
+
+    test('what was fetched is another version: exit code 2', () async {
+      tool({
+        'fetched': {'version': '0.3.0'},
+      });
+      expect(await mutation(environment: {}), 2);
+      expect(package.err, [
+        'test_gates mutation: dart_mutant 0.3.0 '
+            '("${Platform.resolvedExecutable} $kept") is not a version this '
+            'test_gates works with (0.2.0 or later, below 0.3.0). Install '
+            'one that is:',
+        "  dart pub global activate dart_mutant '^0.2.0'",
+      ]);
+      expect(runs(), isEmpty);
+    });
+
+    group('TEST_GATES_DART_MUTANT names another one', () {
+      late String named;
+
+      setUp(() {
+        named = '${package.dir.path}/my_dart_mutant';
+        package.write(
+          'my_dart_mutant',
+          '#!/bin/sh\n'
+              'exec "${Platform.resolvedExecutable}" fake_dart_mutant.dart '
+              '"\$@"\n',
+        );
+        Process.runSync('chmod', ['+x', named]);
+      });
+
+      test('it is started, and nothing is fetched', () async {
+        tool({'report': everythingKilled});
+        expect(
+          await mutation(environment: {'TEST_GATES_DART_MUTANT': named}),
+          0,
+        );
+        expect(package.out, [ok3]);
+        expect(fetches(), isEmpty);
+        expect(package.file(place).existsSync(), isFalse);
+        expect(runs(), hasLength(1));
+      });
+
+      test('its version is checked like that of the fetched one', () async {
+        tool({'version': '0.1.1'});
+        expect(
+          await mutation(environment: {'TEST_GATES_DART_MUTANT': named}),
+          2,
+        );
+        expect(package.err.first, contains('dart_mutant 0.1.1 ("$named")'));
+        expect(fetches(), isEmpty);
+      });
+
+      test('it is not the tool: exit code 2, and nothing is fetched '
+          'instead', () async {
+        expect(
+          await mutation(
+            environment: {'TEST_GATES_DART_MUTANT': 'test_gates_no_such'},
+          ),
+          2,
+        );
+        expect(package.err.take(3), [
+          'test_gates mutation: TEST_GATES_DART_MUTANT names '
+              '"test_gates_no_such", and that is not dart_mutant, the tool '
+              'that makes the mutants and runs the tests on them. Without '
+              'the variable the tool is fetched from pub.dev. To install it '
+              'yourself:',
+          "  dart pub global activate dart_mutant '^0.2.0'",
+          'What was tried:',
+        ]);
+        expect(package.err, hasLength(4));
+        expect(fetches(), isEmpty);
+        expect(runs(), isEmpty);
+      });
+    }, testOn: '!windows');
   });
 
   group('wrong usage (exit code 2), before anything is started', () {

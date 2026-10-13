@@ -31,9 +31,9 @@ String dartMutantRange([
     '${lowest.major}.${lowest.minor}.${lowest.patch} or later, below '
     '${lowest.major}.${lowest.minor + 1}.0';
 
-/// How a supported version of the tool is installed, for the messages that
-/// say that it is missing or is another version: a command that can be run
-/// as it is.
+/// How a supported version of the tool is installed by hand, for the
+/// messages about a tool that could not be fetched or is another version: a
+/// command that can be run as it is.
 String dartMutantInstall([
   ({int major, int minor, int patch}) lowest = supportedDartMutant,
 ]) => "dart pub global activate $dartMutant '${dartMutantConstraint(lowest)}'";
@@ -42,30 +42,83 @@ String dartMutantInstall([
 /// is ignored by git in every Dart project.
 const planFile = '.dart_tool/test_gates/mutation-plan.json';
 
-/// The commands that are tried, in this order, to start the tool: the
-/// executable on PATH, then the globally activated package through [dart]
-/// (the `dart` that runs this program). The first that answers `--version`
-/// is the one that is used.
-///
-/// [executable] is what runs this program. That is `dart` unless the
-/// program was compiled into an executable of its own; then the `dart` on
-/// PATH is used.
-List<List<String>> dartMutantCommands(String executable) => [
-  const [dartMutant],
-  [
-    _dartName.hasMatch(executable) ? executable : 'dart',
-    'pub',
-    'global',
-    'run',
-    dartMutant,
-  ],
-];
+/// The environment variable that names a `dart_mutant` to start instead of
+/// the one `mutation` fetches: the path of an executable.
+const dartMutantVariable = 'TEST_GATES_DART_MUTANT';
+
+/// The executable [environment] names with [dartMutantVariable], or `null`
+/// when it names none (not set, or empty): then the tool is fetched.
+String? namedDartMutant(Map<String, String> environment) {
+  final named = environment[dartMutantVariable]?.trim() ?? '';
+  return named.isEmpty ? null : named;
+}
+
+/// Where `mutation` keeps the tool it fetched, below the package, with `/`:
+/// one file, the compiled program. The directory is named after the
+/// supported versions (`0.2` for 0.2.0 and every later 0.2.x), so that a
+/// version of this package that works with another range does not start
+/// what this one fetched.
+String dartMutantSnapshot([
+  ({int major, int minor, int patch}) lowest = supportedDartMutant,
+]) =>
+    '.dart_tool/test_gates/$dartMutant/${lowest.major}.${lowest.minor}/'
+    '$dartMutant.snapshot';
+
+/// The `dart` that starts what belongs to the tool: [executable] (what runs
+/// this program) when that is `dart`, so that the SDK is the same one. A
+/// program that was compiled into an executable of its own is not `dart`;
+/// then the `dart` on PATH is used.
+String dartOf(String executable) =>
+    _dartName.hasMatch(executable) ? executable : 'dart';
 
 /// `dart` or `dart.exe`, alone or at the end of a path.
 final _dartName = RegExp(r'(^|[/\\])dart(\.exe)?$');
 
-/// What one of the commands that were tried did, for the message that says
-/// that the tool was not found: [startError] when it could not be started,
+/// The command that starts the fetched tool: [dart] with the compiled
+/// program at [snapshot]. Nothing on PATH and nothing of the pub cache of
+/// the user is part of it.
+List<String> dartMutantCommand(String dart, String snapshot) => [
+  dart,
+  snapshot,
+];
+
+/// The command that fetches a supported version of the tool from pub.dev
+/// and compiles it. It is run with `PUB_CACHE` set to a directory of its
+/// own, so the globally activated packages of the user are not touched.
+List<String> dartMutantFetch(
+  String dart, [
+  ({int major, int minor, int patch}) lowest = supportedDartMutant,
+]) => [
+  dart,
+  'pub',
+  'global',
+  'activate',
+  dartMutant,
+  dartMutantConstraint(lowest),
+];
+
+/// Where `dart pub global activate` puts the compiled program, below the
+/// directory `PUB_CACHE` names, with `/`.
+const fetchedSnapshotDirectory = 'global_packages/$dartMutant/bin';
+
+/// True when [name] is the file of the compiled program in
+/// [fetchedSnapshotDirectory]: `dart_mutant.dart-<version of the SDK>.snapshot`.
+bool isFetchedSnapshot(String name) =>
+    name.startsWith('$dartMutant.dart-') && name.endsWith('.snapshot');
+
+/// The last lines of what the command that fetches the tool printed
+/// ([output]), for the message that says that it failed: at most [most],
+/// without the empty ones.
+List<String> lastLines(String output, [int most = 10]) {
+  final lines = [
+    for (final line in output.split('\n'))
+      if (line.trim().isNotEmpty) line.trimRight(),
+  ];
+  return lines.length > most ? lines.sublist(lines.length - most) : lines;
+}
+
+/// What a command that was tried did, for the message that says that it is
+/// not the tool: [startError] when it could not be started,
 /// else its exit code and the first line it printed. A command that is
 /// there and answers with something else than a version is then told apart
 /// from one that is missing.
