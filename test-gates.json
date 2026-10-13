@@ -76,7 +76,7 @@
     },
     {
       "path": "lib/src/mutation_run.dart",
-      "decides": "How dart_mutant is started for the gates: which commands are tried, which versions are supported, the plan and the arguments, which of its exit codes are judged by the report, and what is taken out of an earlier report first",
+      "decides": "How dart_mutant is fetched and started for the gates: where it is kept, which executable the environment names instead, which versions are supported, the plan and the arguments, which of its exit codes are judged by the report, and what is taken out of an earlier report first",
       "impact": "A run of an unsupported version, of other files than the gates, or one that stopped early is judged as if it were the full run, or a report of an earlier run passes for this one"
     },
     {

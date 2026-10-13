@@ -4,12 +4,11 @@ A package with two gates. `lib/bulk_discount.dart` and `lib/shipping_fee.dart` d
 
 ```bash
 dart pub get
-dart pub global activate dart_mutant '^0.2.0'   # once per machine: the tool that `mutation` starts
 dart run test_gates check       # the gates exist, have their tests, and are pure modules
 dart run test_gates test        # dart test with coverage: 100% lines and branches of the gates
 dart run test_gates selfcheck   # with unexecuted code in it, a gate fails
 dart run test_gates timezones   # the tests in other time zones (nothing to run here: no gate names DateTime)
-dart run test_gates mutation    # every small change to a gate is noticed by a test
+dart run test_gates mutation    # every small change to a gate is noticed by a test (the first run fetches the tool that runs them)
 ```
 
 ```

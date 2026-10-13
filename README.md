@@ -36,7 +36,7 @@ dart run test_gates --help
 
 ```yaml
 dev_dependencies:
-  test_gates: ^0.2.1
+  test_gates: ^0.2.2
 ```
 
 Or once per machine, outside of any package:
@@ -48,11 +48,7 @@ test_gates --help                 # needs ~/.pub-cache/bin on PATH
 
 The development dependency is the one to prefer: the version is in `pubspec.lock`, so everybody and CI run the same one. `test_gates` depends on `package:analyzer` with a wide range (`>=8.2.0 <15.0.0`) so that it resolves next to the code generators of an app. When it does not, the global activation is the way out: it has dependencies of its own.
 
-`test_gates mutation` starts [`dart_mutant`](https://pub.dev/packages/dart_mutant), which is installed once per machine and needs Dart 3.11 or later (see [Installing `dart_mutant`](#installing-dart_mutant)):
-
-```bash
-dart pub global activate dart_mutant '^0.2.0'
-```
+`test_gates mutation` starts [`dart_mutant`](https://pub.dev/packages/dart_mutant). There is nothing to install for it: the first run in a package fetches it from pub.dev (see [Where `dart_mutant` comes from](#where-dart_mutant-comes-from)). It needs Dart 3.11 or later.
 
 Coming from 0.1: [Upgrading from 0.1](#upgrading-from-01).
 
@@ -96,7 +92,7 @@ Coming from 0.1: [Upgrading from 0.1](#upgrading-from-01).
    dart run test_gates mutation    # do the tests check the decisions?
    ```
 
-   The test of `lib/shipping_fee.dart` is expected at `lib/shipping_fee_test.dart` or `test/shipping_fee_test.dart` ([`check`](#test_gates-check)). `mutation` needs `dart_mutant` (`dart pub global activate dart_mutant '^0.2.0'`). The first `mutation` usually finds survivors; see [Allowing an equivalent mutant](#allowing-an-equivalent-mutant) before allowing any.
+   The test of `lib/shipping_fee.dart` is expected at `lib/shipping_fee_test.dart` or `test/shipping_fee_test.dart` ([`check`](#test_gates-check)). `mutation` fetches the tool that runs the mutants by itself, the first time. The first `mutation` usually finds survivors; see [Allowing an equivalent mutant](#allowing-an-equivalent-mutant) before allowing any.
 
 3. Keep it that way. Before a push (`.git/hooks/pre-push`, or the hook manager of the project):
 
@@ -603,7 +599,6 @@ Two tools share the work, the way upstream's `mutation` and Stryker do:
 - `test_gates` keeps the list and gives the verdict. `mutation` tells `dart_mutant` which files and which tests (the gates of `test-gates.json`), and judges its report as [`mutation-result`](#test_gates-mutation-result---report-path) does: which survivors are allowed, each with a reason, and that no gate and no mutant was left out.
 
 ```bash
-dart pub global activate dart_mutant '^0.2.0'   # once per machine
 dart run test_gates mutation
 ```
 
@@ -624,24 +619,33 @@ test_gates mutation: OK (mutants 69 / detected 65 (timeout 0) / allowed equivale
 
 The lines of `dart_mutant` come first, as it prints them. To that tool a survivor is a failure, so it ends with `FAILED`; the last line is the verdict of `test_gates`, which knows that the gates allow these two (see [Allowing an equivalent mutant](#allowing-an-equivalent-mutant)).
 
-### Installing `dart_mutant`
+### Where `dart_mutant` comes from
+
+`mutation` fetches it. The first run in a package says so, and takes a few seconds longer:
+
+```
+test_gates mutation: fetching dart_mutant ^0.2.0 from pub.dev into .dart_tool/test_gates/dart_mutant/0.2/dart_mutant.snapshot (once per package)
+```
+
+- It runs `dart pub global activate dart_mutant '^0.2.0'` with `PUB_CACHE` set to a temporary directory, keeps the compiled program (one file, the path above, below the package) and deletes the rest. Your pub cache, your globally activated packages and your `PATH` are not read and not changed.
+- Later runs start that file with the `dart` that runs `test_gates` (the `dart` on `PATH` when `test_gates` was [compiled into an executable](#starting-it-faster-still)), and do not go to the network. A file that no longer answers (the SDK was upgraded, the file is damaged) or is not a supported version is fetched again. So is one that was deleted: to get a later 0.2.x, delete the directory.
+- `.dart_tool/` is ignored by git in a Dart project, so the file is not committed. In CI every job that starts on a fresh checkout fetches it.
+- When it cannot be fetched (no network, or a Dart older than 3.11), the exit code is 2, and the message has what the command printed and how the tool is installed by hand.
+
+`dart_mutant` is a program of its own, not a dependency of your package: it needs a narrow range of `package:analyzer`, which would have to resolve next to the code generators of an app, and a package has one set of dependencies. It runs on Dart 3.11 or later (`test_gates` itself on 3.9), and the package has to be resolved (`dart pub get` / `flutter pub get`).
+
+**This version works with `dart_mutant` 0.2.0 and every later 0.2.x.** (Not 0.1.x: `test_gates` 0.2.0 is the version for that one.) The version is asked for before every run, and any other is refused with exit code 2 before anything is run or changed: another version may make other mutants of the same source, and then the allowances of `test-gates.json` no longer mean what they meant.
+
+#### A `dart_mutant` you installed yourself
+
+To use another build of the tool, or one that is already on the machine, name its executable with the environment variable `TEST_GATES_DART_MUTANT`. Then nothing is fetched:
 
 ```bash
 dart pub global activate dart_mutant '^0.2.0'
+TEST_GATES_DART_MUTANT="$HOME/.pub-cache/bin/dart_mutant" dart run test_gates mutation
 ```
 
-`dart_mutant` is a program of its own, not a dependency of your package: it needs a narrow range of `package:analyzer`, which would have to resolve next to the code generators of an app. It runs on Dart 3.11 or later (`test_gates` itself on 3.9), and the package has to be resolved (`dart pub get` / `flutter pub get`).
-
-`mutation` tries these commands, in this order, and uses the first that answers `--version` with a version:
-
-1. `dart_mutant` on `PATH`. That is where `dart pub global activate` puts it when `~/.pub-cache/bin` is on `PATH`.
-2. `dart pub global run dart_mutant`, with the `dart` that runs `test_gates` (the `dart` on `PATH` when `test_gates` was [compiled into an executable](#starting-it-faster-still)).
-
-When neither does, the exit code is 2, and the message has the command above and what each of the two did: that it could not be started, or its exit code and the first line it printed.
-
-**This version works with `dart_mutant` 0.2.0 and every later 0.2.x.** (Not 0.1.x: `test_gates` 0.2.0 is the version for that one.) The version is asked for before every run, and any other is refused with exit code 2 before anything is run or changed: another version may make other mutants of the same source, and then the allowances of `test-gates.json` no longer mean what they meant. Give the range when you install it, as above: without it, a later 0.3 would be installed, which this version refuses.
-
-There is no setting that names the command. `test-gates.json` is the file upstream reads as well, and upstream refuses a key it does not know. To use another build of the tool, put an executable called `dart_mutant` first on `PATH`.
+Its version is checked in the same way. Give the range when you install it: without it, a later 0.3 would be installed, which this version refuses. A `dart_mutant` on `PATH` is not used unless the variable names it, so that an older one that happens to be there is not picked up. (There is no setting for it in `test-gates.json`: that is the file upstream reads as well, and upstream refuses a key it does not know.)
 
 ### What it does
 
@@ -684,7 +688,7 @@ The exit code of `dart_mutant` is not the verdict. It ends with 1 for a survivor
 | ----------------------- | -------------------------------------------------------------------- |
 | 0                       | Every mutant is detected, allowed as equivalent, or does not compile |
 | 1                       | A survivor without an allowance, a timeout nobody explained, a stale allowance, a gate that could not be mutation tested or is missing from the report, a mutant that was not evaluated, or a wrong entry of `test-gates.json` |
-| 2                       | Wrong usage, an unusable `test-gates.json`, `dart_mutant` is not installed or is not a supported version, or it refused its command line |
+| 2                       | Wrong usage, an unusable `test-gates.json`, `dart_mutant` could not be fetched or is not a supported version, or it refused its command line |
 | 130 / 143 / 129         | Interrupted (SIGINT / SIGTERM / SIGHUP)                              |
 | anything else           | `dart_mutant` ended with it, see above                               |
 
@@ -767,7 +771,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
       - run: dart pub get
-      - run: dart pub global activate dart_mutant '^0.2.0'
       - run: dart run test_gates mutation --force --gate "$GATE"
         env:
           GATE: ${{ matrix.gate }}
@@ -957,7 +960,7 @@ test_gates all: OK (check, test, timezones, mutation)
 
 - **Each check is the command of that name.** It prints what that command prints and decides what that command decides; `all` adds one line at the end. `test/commands/all_test.dart` compares `all` with the commands started one by one, each in a process of its own, and `real_mutation_test.dart` does it with the mutation test.
 - **The first check that fails ends the run**, with its exit code, and the checks behind it are not started: `test_gates all: stopped at "test" (exit code 1). Not run: timezones, mutation`. A hook is over sooner that way, and a later check on a package that already failed says little.
-- `--selfcheck` is handed to `test` ([one run for the coverage and the negative control](#one-run-for-the-coverage-and-the-negative-control---selfcheck)) and `--force` to `mutation`. `--no-mutation` leaves `mutation` out, where `dart_mutant` is not installed. `--dir <package>` goes to all of them.
+- `--selfcheck` is handed to `test` ([one run for the coverage and the negative control](#one-run-for-the-coverage-and-the-negative-control---selfcheck)) and `--force` to `mutation`. `--no-mutation` leaves `mutation` out, where `dart_mutant` cannot run (a Dart older than 3.11). `--dir <package>` goes to all of them.
 - The other options of the commands (`--file`, `--zone`, `--gate`, a command after `--`) are not taken: for those, call the command itself. What the checks need is in `test-gates.json`.
 - Nothing is carried from one check to the next. Each reads `test-gates.json` and the files of the package when its turn comes, because `test --selfcheck` and `mutation` change files while they run.
 
@@ -992,7 +995,7 @@ The commands, their output and their exit codes are the same; only the start is 
 - **The executable is the version it was built from.** It is compiled from the dependencies as they are resolved at that moment (after `dart pub get`, the versions of `pubspec.lock`), not the ones after the next `dart pub upgrade`. Build it again whenever the lock file is newer, and resolve first, because `dart compile exe` does not: at the top of the hook, `test build/test_gates -nt pubspec.lock || { dart pub get && mkdir -p build && dart compile exe tool/test_gates.dart -o build/test_gates; }`. Without the `dart pub get`, a lock file that changed with a `git pull` gives an executable of the old versions that looks new. `build/test_gates --version` says what it is. The lock file changes with the version of a dependency from pub.dev or from git; with a `path` dependency it does not change when the source of the package does, so build again after changing that. Do not commit the executable: put `build/` into `.gitignore`.
 - **In CI, stay with `dart run`.** A job calls `all` once; compiling takes longer than the start it saves.
 - **`dart pub global activate test_gates` is not the same thing.** It installs a version of its own, outside the package, which is not the one in `pubspec.lock`. It is the way out when `test_gates` does not resolve next to the dependencies of an app ([Install](#install)), not a way to start faster.
-- `mutation` finds `dart_mutant` as before. The second place it looks, `dart pub global run dart_mutant`, is then started with the `dart` on `PATH`.
+- `mutation` fetches and starts `dart_mutant` as before, with the `dart` on `PATH`.
 
 ## Limitations
 
@@ -1050,14 +1053,14 @@ Other limits:
 
 Until 0.1.1 `test_gates mutation` made the mutants and ran the tests itself. From 0.2.0 on it starts [`dart_mutant`](https://pub.dev/packages/dart_mutant) for that and judges its report. `test-gates.json` is read as before.
 
-1. Install the tool, on every machine that runs `mutation` and in CI: `dart pub global activate dart_mutant '^0.2.0'` (0.2.0 or a later 0.2.x; Dart 3.11 or later). Without it `mutation` ends with exit code 2.
+1. Nothing is installed for the tool: `mutation` fetches `dart_mutant` (0.2.0 or a later 0.2.x; it needs Dart 3.11 or later) the first time it runs in a package. See [Where `dart_mutant` comes from](#where-dart_mutant-comes-from).
 2. A test command that was given behind `--` now goes behind a second one: `test_gates mutation -- fvm flutter test --no-pub` becomes `test_gates mutation -- -- fvm flutter test --no-pub`. What follows the first `--` are options of `dart_mutant run` (`--jobs`, `--shard`, `--html`). The old form is refused with exit code 2.
 3. Run `test_gates mutation --force` once. The mutators of 0.1 make the same mutants as before, so every `equivalentMutants` and `expectedTimeouts` entry still matches. **New survivors are to be expected**: `dart_mutant` also changes members and numbers by their types (`MethodExpression`, `NumberLiteral`, the guard mutators, see [Mutators](#mutators)), which 0.1 did not. Each is a decision no test checked. Fix the test; allow only what no input can observe.
 4. Run `test_gates check`. It is stricter than in 0.1: the imports of a gate are followed into the files of the package ([What a gate reaches](#what-a-gate-reaches)), more packages are impure by default ([What a gate must not import](#what-a-gate-must-not-import)), and a misspelt key in an `equivalentMutants` entry is a violation. One change goes the other way: a pattern of `settings.forbiddenSource.add` no longer sees comments, so a rule that was written to catch a comment matches nothing now, without a message. For a file that is fine although the check says otherwise, there is `settings.impureImports.allow`. Look at the patterns that are there already: one without `^` and `$` is tried on every import of every file on the way, and stops the following wherever it matches.
 5. Delete `.dart_tool/test_gates/mutation/`. The results and backups that 0.1 kept there are no longer read. (When a run of 0.1 was killed, `git diff` shows the mutant it left in a gate: put the gate back first.)
-6. Replace the list of commands in the hook and in CI by one: `dart run test_gates all` before a push, `dart run test_gates all --selfcheck --force` in CI ([`all`](#test_gates-all---selfcheck---force---no-mutation)). It runs `check`, `test`, `timezones` and `mutation` in one start and stops at the first that fails, so it is what a script with `set -e` did, with one difference: [`timezones`](#test_gates-timezones---zone-name---all----command) is new, and is part of it. Where `dart_mutant` is not installed, `all --no-mutation`. With `"spec": { "suffixes": [] }` (no convention for where the tests are), `timezones` and `mutation` fail for every gate, and so does `all`: call `check` and `test` by themselves. The commands can still be called one by one.
+6. Replace the list of commands in the hook and in CI by one: `dart run test_gates all` before a push, `dart run test_gates all --selfcheck --force` in CI ([`all`](#test_gates-all---selfcheck---force---no-mutation)). It runs `check`, `test`, `timezones` and `mutation` in one start and stops at the first that fails, so it is what a script with `set -e` did, with one difference: [`timezones`](#test_gates-timezones---zone-name---all----command) is new, and is part of it. Where `dart_mutant` cannot run (a Dart older than 3.11), `all --no-mutation`. With `"spec": { "suffixes": [] }` (no convention for where the tests are), `timezones` and `mutation` fail for every gate, and so does `all`: call `check` and `test` by themselves. The commands can still be called one by one.
 
-What else changed: the lines per gate are printed by `dart_mutant`; the gates are no longer changed in place, where the package can be run from a copy; `mutation-result` refuses the report of a part of a run; exit code 2 also means that the tool is missing; `check`, `lcov` and `mutation-result` end with a line and exit code 1, not with an unhandled error, when a file cannot be read. New and optional: `test --selfcheck` (the negative control in the run of the tests that `test` makes anyway), `--not-evaluable` for `mutation` and `mutation-result`.
+What else changed: the lines per gate are printed by `dart_mutant`; the gates are no longer changed in place, where the package can be run from a copy; `mutation-result` refuses the report of a part of a run; exit code 2 also means that the tool could not be fetched; `check`, `lcov` and `mutation-result` end with a line and exit code 1, not with an unhandled error, when a file cannot be read. New and optional: `test --selfcheck` (the negative control in the run of the tests that `test` makes anyway), `--not-evaluable` for `mutation` and `mutation-result`.
 
 ## Relation to `@t09tanaka/test-gates`
 
@@ -1080,7 +1083,7 @@ What else changed: the lines per gate are printed by `dart_mutant`; the gates ar
 | Several checks in one start | none (the scripts of `package.json` call the commands) | `all` |
 | Negative control (`selfcheck`) | leaves out the test of a gate; one run per gate | appends unexecuted code to the gates; one run for all |
 | Mutation testing | `mutation` runs Stryker, `mutation-result` judges its JSON report | `mutation` runs `dart_mutant`, `mutation-result` judges its JSON report; the same report schema, the same judgement and allow list |
-| The mutation tool | a development dependency of the project (`@stryker-mutator/core`), with a configuration file (`stryker.gates.config.mjs`) | a program of its own (`dart pub global activate dart_mutant '^0.2.0'`), given a plan that `mutation` makes from `test-gates.json`; no configuration file |
+| The mutation tool | a development dependency of the project (`@stryker-mutator/core`), with a configuration file (`stryker.gates.config.mjs`) | a program of its own, which `mutation` fetches from pub.dev, given a plan that `mutation` makes from `test-gates.json`; no configuration file |
 | Arguments `mutation` does not know | handed to Stryker | what follows `--` is handed to `dart_mutant run` |
 | Report file | `settings.stryker.reportFile` | the same key |
 | Results of the last run | Stryker's incremental file | those of `dart_mutant` (`.dart_tool/dart_mutant/incremental.json`); `--force` runs everything |
@@ -1097,9 +1100,9 @@ dart analyze --fatal-infos
 dart test
 ```
 
-The decisions live in `lib/src/` as pure functions (text in, verdict out): `manifest.dart`, `settings.dart`, `lcov.dart`, `selfcheck.dart`, `zones.dart`, `args.dart`, for `check` `dart_source.dart`, `scan.dart`, `import_policy.dart`, `spec_path.dart`, `gate_path.dart`, `pubspec.dart`, `json.dart`, and for `mutation` `mutation_run.dart` (how `dart_mutant` is started: the commands that are tried, the supported versions, the plan, the arguments, and which of its exit codes leave the verdict to the report) and `mutation_result.dart` (the judgement, a port of upstream's `mutation-result.ts` with its test cases). `dart_source.dart` is the only file that touches `package:analyzer`. Reading and writing files, starting processes and printing are in `lib/src/io/` and `lib/src/commands/`.
+The decisions live in `lib/src/` as pure functions (text in, verdict out): `manifest.dart`, `settings.dart`, `lcov.dart`, `selfcheck.dart`, `zones.dart`, `args.dart`, for `check` `dart_source.dart`, `scan.dart`, `import_policy.dart`, `spec_path.dart`, `gate_path.dart`, `pubspec.dart`, `json.dart`, and for `mutation` `mutation_run.dart` (how `dart_mutant` is fetched and started, the supported versions, the plan, the arguments, and which of its exit codes leave the verdict to the report) and `mutation_result.dart` (the judgement, a port of upstream's `mutation-result.ts` with its test cases). `dart_source.dart` is the only file that touches `package:analyzer`. Reading and writing files, starting processes and printing are in `lib/src/io/` and `lib/src/commands/`.
 
-The tests of `test`, `selfcheck`, `timezones`, `mutation` and `all` start processes: stand-ins for the coverage command, for the test runner and for `dart_mutant` (`test/fixtures/selfcheck/fake_coverage.dart.txt`, `test/fixtures/zones/fake_zone_test.dart.txt`, `test/fixtures/mutation/fake_dart_mutant.dart.txt`) and, in `test/commands/real_coverage_test.dart`, `real_timezones_test.dart` and `real_mutation_test.dart`, `dart test` and `dart_mutant` itself on a small package that is copied to a temporary directory and resolved with `dart pub get --offline`. The test with `dart_mutant` is skipped where the tool is not installed, and fails there instead when `TEST_GATES_REQUIRE_DART_MUTANT=1` is set, as it is in the workflow.
+The tests of `test`, `selfcheck`, `timezones`, `mutation` and `all` start processes: stand-ins for the coverage command, for the test runner, for `dart_mutant` and for the command that fetches it (`test/fixtures/selfcheck/fake_coverage.dart.txt`, `test/fixtures/zones/fake_zone_test.dart.txt`, `test/fixtures/mutation/fake_dart_mutant.dart.txt`, `fake_fetch.dart.txt`) and, in `test/commands/real_coverage_test.dart`, `real_timezones_test.dart` and `real_mutation_test.dart`, `dart test` and `dart_mutant` itself on a small package that is copied to a temporary directory and resolved with `dart pub get --offline`. The test with `dart_mutant` itself fetches the tool from pub.dev as `mutation` does; it runs only when `TEST_GATES_REQUIRE_DART_MUTANT=1` is set, as it is in the workflow, and is skipped otherwise.
 
 ### The gates of this package
 

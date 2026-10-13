@@ -49,7 +49,7 @@ Options:
   -v, --version               Show the version
 
 Exit codes: 0 passed, 1 violations found, 2 wrong usage or unusable test-gates.json
-(mutation: or dart_mutant is missing or not a supported version),
+(mutation: or dart_mutant cannot be fetched or is not a supported version),
 130 / 143 / 129 interrupted by SIGINT / SIGTERM / SIGHUP (test, selfcheck, timezones, mutation, all)
 ''';
 

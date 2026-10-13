@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.2 (2026-10-13)
+
+`mutation` fetches `dart_mutant` itself.
+
+- Nothing is installed by hand any more. The first `mutation` (or `all`) in
+  a package fetches a supported version of `dart_mutant` from pub.dev and
+  says so in one line. It runs `dart pub global activate dart_mutant
+  '^0.2.0'` with a pub cache of its own in a temporary directory and keeps
+  the compiled program, one file, at
+  `.dart_tool/test_gates/dart_mutant/0.2/dart_mutant.snapshot` below the
+  package. The pub cache, the globally activated packages and the `PATH` of
+  the user are not read and not changed. Later runs start that file with
+  the `dart` that runs `test_gates` and do not go to the network; a file
+  that no longer answers (after an upgrade of the SDK) or is not a
+  supported version is fetched again. `.dart_tool/` is ignored by git, so
+  nothing of it is committed. Remove the step that installs the tool from
+  your CI workflow.
+- **A `dart_mutant` on `PATH`, or one that is globally activated, is no
+  longer used by itself**: an older one that happens to be there would be
+  picked up. To use one you installed, name its executable with the
+  environment variable `TEST_GATES_DART_MUTANT`
+  (`TEST_GATES_DART_MUTANT="$HOME/.pub-cache/bin/dart_mutant"`); then
+  nothing is fetched. Its version is checked as before.
+- When the tool cannot be fetched (no network, or a Dart older than 3.11),
+  `mutation` ends with exit code 2 and prints what the command said and how
+  the tool is installed by hand.
+
 ## 0.2.1 (2026-10-13)
 
 For `dart_mutant` 0.2.
