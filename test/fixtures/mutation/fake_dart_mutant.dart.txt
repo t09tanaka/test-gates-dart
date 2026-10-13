@@ -8,7 +8,7 @@
 // What it does is read from "fake.json" in the current directory (every key
 // is optional):
 //
-//   "version": "0.2.0"     what --version prints
+//   "version": "0.2.1"     what --version prints
 //   "versionExit": 0       the exit code of --version
 //   "report": { ... }      written to the path of --report; without it no
 //                          report is written
@@ -48,7 +48,7 @@ Future<void> main(List<String> arguments) async {
       ? jsonDecode(file.readAsStringSync()) as Map<String, Object?>
       : const <String, Object?>{};
   if (arguments.contains('--version')) {
-    stdout.writeln(fake['version'] ?? '0.2.0');
+    stdout.writeln(fake['version'] ?? '0.2.1');
     exitCode = fake['versionExit'] as int? ?? 0;
     return;
   }

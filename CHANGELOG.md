@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.3 (2026-10-13)
+
+`mutation` works with `dart_mutant` 0.2.1 and every later 0.2.x. A
+`dart_mutant` 0.2.0 that an earlier run kept in a package is fetched again
+once, as a version that is no longer supported. Why: 0.2.1 builds the mutants
+of a Flutter package in one go and runs many of them in one start of
+`flutter test`, which is much faster than one start per mutant.
+
 ## 0.2.2 (2026-10-13)
 
 `mutation` fetches `dart_mutant` itself.

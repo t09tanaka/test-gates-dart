@@ -36,7 +36,7 @@ dart run test_gates --help
 
 ```yaml
 dev_dependencies:
-  test_gates: ^0.2.2
+  test_gates: ^0.2.3
 ```
 
 Or once per machine, outside of any package:
@@ -624,24 +624,24 @@ The lines of `dart_mutant` come first, as it prints them. To that tool a survivo
 `mutation` fetches it. The first run in a package says so, and takes a few seconds longer:
 
 ```
-test_gates mutation: fetching dart_mutant ^0.2.0 from pub.dev into .dart_tool/test_gates/dart_mutant/0.2/dart_mutant.snapshot (once per package)
+test_gates mutation: fetching dart_mutant ^0.2.1 from pub.dev into .dart_tool/test_gates/dart_mutant/0.2/dart_mutant.snapshot (once per package)
 ```
 
-- It runs `dart pub global activate dart_mutant '^0.2.0'` with `PUB_CACHE` set to a temporary directory, keeps the compiled program (one file, the path above, below the package) and deletes the rest. Your pub cache, your globally activated packages and your `PATH` are not read and not changed.
+- It runs `dart pub global activate dart_mutant '^0.2.1'` with `PUB_CACHE` set to a temporary directory, keeps the compiled program (one file, the path above, below the package) and deletes the rest. Your pub cache, your globally activated packages and your `PATH` are not read and not changed.
 - Later runs start that file with the `dart` that runs `test_gates` (the `dart` on `PATH` when `test_gates` was [compiled into an executable](#starting-it-faster-still)), and do not go to the network. A file that no longer answers (the SDK was upgraded, the file is damaged) or is not a supported version is fetched again. So is one that was deleted: to get a later 0.2.x, delete the directory.
 - `.dart_tool/` is ignored by git in a Dart project, so the file is not committed. In CI every job that starts on a fresh checkout fetches it.
 - When it cannot be fetched (no network, or a Dart older than 3.11), the exit code is 2, and the message has what the command printed and how the tool is installed by hand.
 
 `dart_mutant` is a program of its own, not a dependency of your package: it needs a narrow range of `package:analyzer`, which would have to resolve next to the code generators of an app, and a package has one set of dependencies. It runs on Dart 3.11 or later (`test_gates` itself on 3.9), and the package has to be resolved (`dart pub get` / `flutter pub get`).
 
-**This version works with `dart_mutant` 0.2.0 and every later 0.2.x.** (Not 0.1.x: `test_gates` 0.2.0 is the version for that one.) The version is asked for before every run, and any other is refused with exit code 2 before anything is run or changed: another version may make other mutants of the same source, and then the allowances of `test-gates.json` no longer mean what they meant.
+**This version works with `dart_mutant` 0.2.1 and every later 0.2.x.** (Not 0.1.x: `test_gates` 0.2.0 is the version for that one.) The version is asked for before every run, and any other is refused with exit code 2 before anything is run or changed: another version may make other mutants of the same source, and then the allowances of `test-gates.json` no longer mean what they meant.
 
 #### A `dart_mutant` you installed yourself
 
 To use another build of the tool, or one that is already on the machine, name its executable with the environment variable `TEST_GATES_DART_MUTANT`. Then nothing is fetched:
 
 ```bash
-dart pub global activate dart_mutant '^0.2.0'
+dart pub global activate dart_mutant '^0.2.1'
 TEST_GATES_DART_MUTANT="$HOME/.pub-cache/bin/dart_mutant" dart run test_gates mutation
 ```
 
@@ -1053,7 +1053,7 @@ Other limits:
 
 Until 0.1.1 `test_gates mutation` made the mutants and ran the tests itself. From 0.2.0 on it starts [`dart_mutant`](https://pub.dev/packages/dart_mutant) for that and judges its report. `test-gates.json` is read as before.
 
-1. Nothing is installed for the tool: `mutation` fetches `dart_mutant` (0.2.0 or a later 0.2.x; it needs Dart 3.11 or later) the first time it runs in a package. See [Where `dart_mutant` comes from](#where-dart_mutant-comes-from).
+1. Nothing is installed for the tool: `mutation` fetches `dart_mutant` (0.2.1 or a later 0.2.x; it needs Dart 3.11 or later) the first time it runs in a package. See [Where `dart_mutant` comes from](#where-dart_mutant-comes-from).
 2. A test command that was given behind `--` now goes behind a second one: `test_gates mutation -- fvm flutter test --no-pub` becomes `test_gates mutation -- -- fvm flutter test --no-pub`. What follows the first `--` are options of `dart_mutant run` (`--jobs`, `--shard`, `--html`). The old form is refused with exit code 2.
 3. Run `test_gates mutation --force` once. The mutators of 0.1 make the same mutants as before, so every `equivalentMutants` and `expectedTimeouts` entry still matches. **New survivors are to be expected**: `dart_mutant` also changes members and numbers by their types (`MethodExpression`, `NumberLiteral`, the guard mutators, see [Mutators](#mutators)), which 0.1 did not. Each is a decision no test checked. Fix the test; allow only what no input can observe.
 4. Run `test_gates check`. It is stricter than in 0.1: the imports of a gate are followed into the files of the package ([What a gate reaches](#what-a-gate-reaches)), more packages are impure by default ([What a gate must not import](#what-a-gate-must-not-import)), and a misspelt key in an `equivalentMutants` entry is a violation. One change goes the other way: a pattern of `settings.forbiddenSource.add` no longer sees comments, so a rule that was written to catch a comment matches nothing now, without a message. For a file that is fine although the check says otherwise, there is `settings.impureImports.allow`. Look at the patterns that are there already: one without `^` and `$` is tried on every import of every file on the way, and stops the following wherever it matches.

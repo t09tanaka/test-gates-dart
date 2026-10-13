@@ -396,7 +396,7 @@ void main() {
         'test_gates mutation: dart_mutant was not found. It is the tool '
             'that makes the mutants and runs the tests on them. Install it '
             'with:',
-        "  dart pub global activate dart_mutant '^0.2.0'",
+        "  dart pub global activate dart_mutant '^0.2.1'",
         'What was tried:',
         startsWith(
           '  - "test_gates_no_such_program --version" could not be started (',
@@ -448,8 +448,8 @@ void main() {
         expect(package.err, [
           'test_gates mutation: dart_mutant $version '
               '("${fake.join(' ')}") is not a version this test_gates works '
-              'with (0.2.0 or later, below 0.3.0). Install one that is:',
-          "  dart pub global activate dart_mutant '^0.2.0'",
+              'with (0.2.1 or later, below 0.3.0). Install one that is:',
+          "  dart pub global activate dart_mutant '^0.2.1'",
         ]);
         expect(runs(), isEmpty);
         // Nothing was changed.
@@ -467,13 +467,13 @@ void main() {
     const place = '.dart_tool/test_gates/dart_mutant/0.2';
     const kept = '$place/dart_mutant.snapshot';
     const fetching =
-        'test_gates mutation: fetching dart_mutant ^0.2.0 from pub.dev into '
+        'test_gates mutation: fetching dart_mutant ^0.2.1 from pub.dev into '
         '$kept (once per package)';
     const byHand = [
       'test_gates mutation: to use one you installed yourself, install it '
           'and set TEST_GATES_DART_MUTANT to the path of its executable '
           '(~/.pub-cache/bin/dart_mutant):',
-      "  dart pub global activate dart_mutant '^0.2.0'",
+      "  dart pub global activate dart_mutant '^0.2.1'",
     ];
 
     /// The directories the stand-in was told to fetch into.
@@ -526,6 +526,19 @@ void main() {
       expect(fetches(), hasLength(1));
     });
 
+    test('what is there is an older 0.2.x (0.2.0): it is fetched again, not '
+        'an error', () async {
+      package.write(kept, package.read('fake_dart_mutant.dart'));
+      tool({
+        'version': '0.2.0',
+        'fetched': {'version': '0.2.1', 'report': everythingKilled},
+      });
+      expect(await mutation(environment: {}), 0);
+      expect(package.out, [fetching, ok3]);
+      expect(package.err, isEmpty);
+      expect(fetches(), hasLength(1));
+    });
+
     test('what is there does not answer: it is fetched again', () async {
       package.write(kept, 'not a program');
       tool({'report': everythingKilled});
@@ -545,7 +558,7 @@ void main() {
       expect(await mutation(environment: {}), 2);
       expect(package.out, [fetching]);
       expect(package.err, [
-        'test_gates mutation: dart_mutant ^0.2.0 could not be fetched from '
+        'test_gates mutation: dart_mutant ^0.2.1 could not be fetched from '
             'pub.dev: "${Platform.resolvedExecutable} fake_fetch.dart" '
             'ended with exit code 69',
         '    Got socket error trying to find package dart_mutant',
@@ -564,7 +577,7 @@ void main() {
         tool({'fetchNothing': true});
         expect(await mutation(environment: {}), 2);
         expect(package.err, [
-          'test_gates mutation: dart_mutant ^0.2.0 could not be fetched from '
+          'test_gates mutation: dart_mutant ^0.2.1 could not be fetched from '
               'pub.dev: "${Platform.resolvedExecutable} fake_fetch.dart" did '
               'not compile it',
           ...byHand,
@@ -596,9 +609,9 @@ void main() {
       expect(package.err, [
         'test_gates mutation: dart_mutant 0.3.0 '
             '("${Platform.resolvedExecutable} $kept") is not a version this '
-            'test_gates works with (0.2.0 or later, below 0.3.0). Install '
+            'test_gates works with (0.2.1 or later, below 0.3.0). Install '
             'one that is:',
-        "  dart pub global activate dart_mutant '^0.2.0'",
+        "  dart pub global activate dart_mutant '^0.2.1'",
       ]);
       expect(runs(), isEmpty);
     });
@@ -653,7 +666,7 @@ void main() {
               'that makes the mutants and runs the tests on them. Without '
               'the variable the tool is fetched from pub.dev. To install it '
               'yourself:',
-          "  dart pub global activate dart_mutant '^0.2.0'",
+          "  dart pub global activate dart_mutant '^0.2.1'",
           'What was tried:',
         ]);
         expect(package.err, hasLength(4));
