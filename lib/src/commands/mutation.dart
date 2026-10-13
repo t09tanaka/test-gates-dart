@@ -106,7 +106,7 @@ Future<int> runMutation(
       '$executable mutation: $dartMutant was not found. It is the tool that '
       'makes the mutants and runs the tests on them. Install it with:',
     );
-    io.err('  $dartMutantInstall');
+    io.err('  ${dartMutantInstall()}');
     io.err('What was tried:');
     for (final attempt in attempts) {
       io.err('  - $attempt');
@@ -119,7 +119,7 @@ Future<int> runMutation(
       '("${found.command.join(' ')}") is not a version this $executable '
       'works with (${dartMutantRange()}). Install one that is:',
     );
-    io.err("  $dartMutantInstall '${dartMutantConstraint()}'");
+    io.err('  ${dartMutantInstall()}');
     return 2;
   }
 

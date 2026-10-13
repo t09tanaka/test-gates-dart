@@ -59,8 +59,15 @@ void main() {
       }
     });
 
-    test('the command that installs the tool', () {
-      expect(dartMutantInstall, 'dart pub global activate dart_mutant');
+    test('the command that installs a supported version of the tool', () {
+      expect(
+        dartMutantInstall(),
+        "dart pub global activate dart_mutant '^0.2.0'",
+      );
+      expect(
+        dartMutantInstall((major: 2, minor: 9, patch: 3)),
+        "dart pub global activate dart_mutant '^2.9.3'",
+      );
     });
   });
 
@@ -139,12 +146,12 @@ void main() {
   });
 
   group('the supported versions', () {
-    test('are 0.1.1 and every later 0.1.x, said in one place', () {
-      expect(supportedDartMutant, (major: 0, minor: 1, patch: 1));
-      expect(dartMutantConstraint(), '^0.1.1');
-      expect(dartMutantRange(), '0.1.1 or later, below 0.2.0');
-      expect(isSupportedDartMutant('0.1.0'), isFalse);
-      expect(isSupportedDartMutant('0.1.1'), isTrue);
+    test('are 0.2.0 and every later 0.2.x, said in one place', () {
+      expect(supportedDartMutant, (major: 0, minor: 2, patch: 0));
+      expect(dartMutantConstraint(), '^0.2.0');
+      expect(dartMutantRange(), '0.2.0 or later, below 0.3.0');
+      expect(isSupportedDartMutant('0.1.1'), isFalse);
+      expect(isSupportedDartMutant('0.2.0'), isTrue);
     });
 
     test('a higher lowest version: one constant decides the check and both '
@@ -165,13 +172,13 @@ void main() {
     });
 
     test('every patch of it, with or without a suffix', () {
-      for (final version in ['0.1.1', '0.1.2', '0.1.27', '0.1.3-dev.1']) {
+      for (final version in ['0.2.0', '0.2.1', '0.2.27', '0.2.3-dev.1']) {
         expect(isSupportedDartMutant(version), isTrue, reason: version);
       }
     });
 
     test('no other minor and no other major', () {
-      for (final version in ['0.2.0', '0.0.1', '1.1.0', '0.10.0', '0.11.1']) {
+      for (final version in ['0.1.1', '0.3.0', '0.0.2', '1.2.0', '0.20.0']) {
         expect(isSupportedDartMutant(version), isFalse, reason: version);
       }
     });

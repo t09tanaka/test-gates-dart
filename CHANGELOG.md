@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.1 (2026-10-13)
+
+For `dart_mutant` 0.2.
+
+- `mutation` works with `dart_mutant` 0.2.0 and every later 0.2.x, and no
+  longer with 0.1.x (`dart pub global activate dart_mutant '^0.2.0'`). What
+  `mutation` relies on is the same in both: the arguments of `run`, the plan
+  file, the report, the exit codes and the output of `--version`. One range
+  is named, and it is the one of the version that runs the mutants of a pure
+  Dart package faster. Install 0.2 on every machine that runs `mutation`,
+  and in CI; `test_gates` 0.2.0 stays the version for `dart_mutant` 0.1.x.
+- What changes with `dart_mutant` 0.2.0 is in its changelog. For a run of
+  `mutation`: the tests of a gate of a pure Dart package are compiled once
+  for its mutants where that can be done, the lines it prints per gate say
+  so, and the gates are no longer changed in place with one job. They still
+  are in a package that cannot be run from a copy, and with one job where
+  every mutant gets a start of the test runner of its own (a Flutter
+  package, `-- --one-by-one --jobs 1`). `-- --one-by-one` runs the mutants
+  as 0.1 ran them.
+- The message that says that `dart_mutant` was not found names the supported
+  versions in the command that installs it (`dart pub global activate
+  dart_mutant '^0.2.0'`), as the message for a version that is not supported
+  does. Without the range a later version than the supported ones could be
+  installed.
+
 ## 0.2.0 (2026-10-12)
 
 `test_gates mutation` no longer makes the mutants and runs the tests itself.

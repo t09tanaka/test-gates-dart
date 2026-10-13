@@ -7,31 +7,36 @@ import 'mutation_result.dart';
 /// starts it as a program of its own and judges the report it writes.
 const dartMutant = 'dart_mutant';
 
-/// How the tool is installed, for the message that says it is missing.
-const dartMutantInstall = 'dart pub global activate $dartMutant';
-
 /// The lowest version of the tool this version works with. Every later
 /// version with the same major and minor number is supported as well
-/// (0.1.1: 0.1.1 and every later 0.1.x). The one place that says so; the
+/// (0.2.0: 0.2.0 and every later 0.2.x). The one place that says so; the
 /// messages and the check are made from it.
 ///
-/// Not 0.1.0: an experimental option of that version could report a mutant
-/// as killed that survives.
-const supportedDartMutant = (major: 0, minor: 1, patch: 1);
+/// Not 0.1.x: what a tool that starts this one relies on is the same in
+/// 0.1.1 and 0.2.0, but one range is named, and 0.2.0 is the one that runs
+/// the mutants of a pure Dart package faster.
+const supportedDartMutant = (major: 0, minor: 2, patch: 0);
 
 /// The supported versions as `dart pub global activate` takes them:
-/// `^0.1.1` for [supportedDartMutant] 0.1.1, which is 0.1.1 or later and
-/// below 0.2.0.
+/// `^0.2.0` for [supportedDartMutant] 0.2.0, which is 0.2.0 or later and
+/// below 0.3.0.
 String dartMutantConstraint([
   ({int major, int minor, int patch}) lowest = supportedDartMutant,
 ]) => '^${lowest.major}.${lowest.minor}.${lowest.patch}';
 
-/// The same in words: `0.1.1 or later, below 0.2.0`.
+/// The same in words: `0.2.0 or later, below 0.3.0`.
 String dartMutantRange([
   ({int major, int minor, int patch}) lowest = supportedDartMutant,
 ]) =>
     '${lowest.major}.${lowest.minor}.${lowest.patch} or later, below '
     '${lowest.major}.${lowest.minor + 1}.0';
+
+/// How a supported version of the tool is installed, for the messages that
+/// say that it is missing or is another version: a command that can be run
+/// as it is.
+String dartMutantInstall([
+  ({int major, int minor, int patch}) lowest = supportedDartMutant,
+]) => "dart pub global activate $dartMutant '${dartMutantConstraint(lowest)}'";
 
 /// Where the plan for the tool is written, below the package. `.dart_tool`
 /// is ignored by git in every Dart project.

@@ -103,7 +103,7 @@ void main() {
       if (Platform.environment[required] == '1') {
         fail('$required is set, and dart_mutant is not installed');
       }
-      markTestSkipped('dart_mutant is not installed ($dartMutantInstall)');
+      markTestSkipped('dart_mutant is not installed (${dartMutantInstall()})');
       return;
     }
     final source = File('${dir.path}/$gate').readAsBytesSync();

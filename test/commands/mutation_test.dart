@@ -388,7 +388,7 @@ void main() {
         'test_gates mutation: dart_mutant was not found. It is the tool '
             'that makes the mutants and runs the tests on them. Install it '
             'with:',
-        '  dart pub global activate dart_mutant',
+        "  dart pub global activate dart_mutant '^0.2.0'",
         'What was tried:',
         startsWith(
           '  - "test_gates_no_such_program --version" could not be started (',
@@ -431,7 +431,7 @@ void main() {
       expect(runs(), isEmpty);
     });
 
-    for (final version in ['0.2.0', '1.1.0', '0.0.9', '0.1.0']) {
+    for (final version in ['0.3.0', '1.2.0', '0.0.9', '0.1.1']) {
       test('version $version is not supported: exit code 2, nothing is '
           'run', () async {
         tool({'version': version, 'report': everythingKilled});
@@ -440,8 +440,8 @@ void main() {
         expect(package.err, [
           'test_gates mutation: dart_mutant $version '
               '("${fake.join(' ')}") is not a version this test_gates works '
-              'with (0.1.1 or later, below 0.2.0). Install one that is:',
-          "  dart pub global activate dart_mutant '^0.1.1'",
+              'with (0.2.0 or later, below 0.3.0). Install one that is:',
+          "  dart pub global activate dart_mutant '^0.2.0'",
         ]);
         expect(runs(), isEmpty);
         // Nothing was changed.
@@ -449,8 +449,8 @@ void main() {
       });
     }
 
-    test('0.1.7 is supported', () async {
-      tool({'version': '0.1.7', 'report': everythingKilled});
+    test('0.2.7 is supported', () async {
+      tool({'version': '0.2.7', 'report': everythingKilled});
       expect(await mutation(), 0);
     });
   });
