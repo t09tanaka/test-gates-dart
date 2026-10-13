@@ -114,7 +114,7 @@ List<String> lastLines(String output, [int most = 10]) {
     for (final line in output.split('\n'))
       if (line.trim().isNotEmpty) line.trimRight(),
   ];
-  return lines.length > most ? lines.sublist(lines.length - most) : lines;
+  return lines.reversed.take(most).toList().reversed.toList();
 }
 
 /// What a command that was tried did, for the message that says that it is
