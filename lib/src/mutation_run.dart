@@ -9,22 +9,22 @@ const dartMutant = 'dart_mutant';
 
 /// The lowest version of the tool this version works with. Every later
 /// version with the same major and minor number is supported as well
-/// (0.2.0: 0.2.0 and every later 0.2.x). The one place that says so; the
+/// (0.2.1: 0.2.1 and every later 0.2.x). The one place that says so; the
 /// messages and the check are made from it.
 ///
 /// Not 0.1.x: what a tool that starts this one relies on is the same in
 /// 0.1.1 and 0.2.0, but one range is named, and 0.2.0 is the one that runs
 /// the mutants of a pure Dart package faster.
-const supportedDartMutant = (major: 0, minor: 2, patch: 0);
+const supportedDartMutant = (major: 0, minor: 2, patch: 1);
 
 /// The supported versions as `dart pub global activate` takes them:
-/// `^0.2.0` for [supportedDartMutant] 0.2.0, which is 0.2.0 or later and
+/// `^0.2.1` for [supportedDartMutant] 0.2.1, which is 0.2.1 or later and
 /// below 0.3.0.
 String dartMutantConstraint([
   ({int major, int minor, int patch}) lowest = supportedDartMutant,
 ]) => '^${lowest.major}.${lowest.minor}.${lowest.patch}';
 
-/// The same in words: `0.2.0 or later, below 0.3.0`.
+/// The same in words: `0.2.1 or later, below 0.3.0`.
 String dartMutantRange([
   ({int major, int minor, int patch}) lowest = supportedDartMutant,
 ]) =>
@@ -55,7 +55,7 @@ String? namedDartMutant(Map<String, String> environment) {
 
 /// Where `mutation` keeps the tool it fetched, below the package, with `/`:
 /// one file, the compiled program. The directory is named after the
-/// supported versions (`0.2` for 0.2.0 and every later 0.2.x), so that a
+/// supported versions (`0.2` for 0.2.1 and every later 0.2.x), so that a
 /// version of this package that works with another range does not start
 /// what this one fetched.
 String dartMutantSnapshot([

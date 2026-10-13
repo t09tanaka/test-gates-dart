@@ -45,7 +45,7 @@ void main() {
         'global',
         'activate',
         'dart_mutant',
-        '^0.2.0',
+        '^0.2.1',
       ]);
       expect(
         dartMutantFetch('dart', (major: 2, minor: 9, patch: 3)).last,
@@ -118,7 +118,7 @@ void main() {
     test('the command that installs a supported version of the tool', () {
       expect(
         dartMutantInstall(),
-        "dart pub global activate dart_mutant '^0.2.0'",
+        "dart pub global activate dart_mutant '^0.2.1'",
       );
       expect(
         dartMutantInstall((major: 2, minor: 9, patch: 3)),
@@ -202,12 +202,13 @@ void main() {
   });
 
   group('the supported versions', () {
-    test('are 0.2.0 and every later 0.2.x, said in one place', () {
-      expect(supportedDartMutant, (major: 0, minor: 2, patch: 0));
-      expect(dartMutantConstraint(), '^0.2.0');
-      expect(dartMutantRange(), '0.2.0 or later, below 0.3.0');
+    test('are 0.2.1 and every later 0.2.x, said in one place', () {
+      expect(supportedDartMutant, (major: 0, minor: 2, patch: 1));
+      expect(dartMutantConstraint(), '^0.2.1');
+      expect(dartMutantRange(), '0.2.1 or later, below 0.3.0');
       expect(isSupportedDartMutant('0.1.1'), isFalse);
-      expect(isSupportedDartMutant('0.2.0'), isTrue);
+      expect(isSupportedDartMutant('0.2.0'), isFalse);
+      expect(isSupportedDartMutant('0.2.1'), isTrue);
     });
 
     test('a higher lowest version: one constant decides the check and both '
@@ -228,7 +229,7 @@ void main() {
     });
 
     test('every patch of it, with or without a suffix', () {
-      for (final version in ['0.2.0', '0.2.1', '0.2.27', '0.2.3-dev.1']) {
+      for (final version in ['0.2.1', '0.2.2', '0.2.27', '0.2.3-dev.1']) {
         expect(isSupportedDartMutant(version), isTrue, reason: version);
       }
     });
