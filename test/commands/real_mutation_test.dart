@@ -9,42 +9,20 @@ import 'package:test_gates/src/cli.dart';
 import 'package:test_gates/src/commands/output.dart';
 import 'package:test_gates/src/mutation_run.dart';
 
-/// `mutation` against the real thing: `dart_mutant` as it is installed on
-/// this machine, on a small package whose tests are run by `dart test`. The
-/// source is kept as .txt (test/fixtures/mutation/package) so that it is not
-/// analyzed or run with this package, and is copied into a temporary
+/// `mutation` against the real thing: `dart_mutant` as `mutation` fetches
+/// it from pub.dev, on a small package whose tests are run by `dart test`.
+/// The source is kept as .txt (test/fixtures/mutation/package) so that it
+/// is not analyzed or run with this package, and is copied into a temporary
 /// directory.
 ///
-/// Where the tool is not installed the test is skipped: it needs a newer
-/// Dart than this package does. With TEST_GATES_REQUIRE_DART_MUTANT=1 (the
-/// workflow of this package sets it where the tool is installed) a missing
-/// tool fails the test instead.
+/// The test goes to pub.dev, and the tool needs a newer Dart than this
+/// package does: it runs only with TEST_GATES_REQUIRE_DART_MUTANT=1 (the
+/// workflow of this package sets it on the SDK the tool runs on).
 void main() {
   late Directory dir;
   final out = <String>[];
   final err = <String>[];
   final io = Io(out: out.add, err: err.add);
-
-  bool installed() {
-    for (final command in dartMutantCommands(Platform.resolvedExecutable)) {
-      try {
-        final result = Process.runSync(command.first, [
-          ...command.sublist(1),
-          '--version',
-        ]);
-        final version = dartMutantVersionOf(
-          result.exitCode,
-          result.stdout as String,
-        );
-        if (version != null) {
-          return true;
-        }
-      } on ProcessException {
-        // The next one.
-      }
-    }
-    return false;
-  }
 
   const required = 'TEST_GATES_REQUIRE_DART_MUTANT';
   const gate = 'lib/steps.dart';
@@ -99,13 +77,14 @@ void main() {
 
   test('the tool is started, its report is judged, and the entries that are '
       'printed for the survivors allow them when they are pasted', () async {
-    if (!installed()) {
-      if (Platform.environment[required] == '1') {
-        fail('$required is set, and dart_mutant is not installed');
-      }
-      markTestSkipped('dart_mutant is not installed (${dartMutantInstall()})');
+    if (Platform.environment[required] != '1') {
+      markTestSkipped('fetches dart_mutant from pub.dev: set $required=1');
       return;
     }
+    // The tool this test is about is the one that is fetched.
+    expect(namedDartMutant(Platform.environment), isNull);
+    final kept = File('${dir.path}/${dartMutantSnapshot()}');
+    expect(kept.existsSync(), isFalse);
     final source = File('${dir.path}/$gate').readAsBytesSync();
 
     // The tool ends with exit code 1 here: mutants survive. How many, and
@@ -114,6 +93,9 @@ void main() {
     // of the syntax tree are the same in every version, so one of those is
     // looked for by name.
     expect(await cli(['mutation', '--force']), 1);
+    expect(out.first, startsWith('test_gates mutation: fetching dart_mutant '));
+    expect(kept.existsSync(), isTrue);
+    final fetched = kept.lastModifiedSync();
     final count = RegExp(
       r'^test_gates mutation: (\d+) surviving mutant\(s\) not in the allow '
       r'list$',
@@ -167,6 +149,8 @@ void main() {
           '$notEvaluable / unallowed survivors 0)',
     ]);
     expect(err, isEmpty);
+    // Nothing was fetched a second time.
+    expect(kept.lastModifiedSync(), fetched);
     expect(run(['mutation-result', '--dir', dir.path], io), 0);
 
     // One entry less: that mutant is back, and no other.

@@ -19,13 +19,75 @@ String report(Map<String, List<String>> statusesByFile) => jsonEncode({
 });
 
 void main() {
-  group('the commands that are tried', () {
-    test('the executable on PATH first, then the globally activated package '
-        'through the dart that runs this program', () {
-      expect(dartMutantCommands('/sdk/bin/dart'), [
-        ['dart_mutant'],
-        ['/sdk/bin/dart', 'pub', 'global', 'run', 'dart_mutant'],
+  group('how the tool is started and fetched', () {
+    test('the fetched tool: the compiled program, with the given dart', () {
+      expect(dartMutantCommand('/sdk/bin/dart', 'a/dart_mutant.snapshot'), [
+        '/sdk/bin/dart',
+        'a/dart_mutant.snapshot',
       ]);
+    });
+
+    test('where it is kept is named after the supported versions', () {
+      expect(
+        dartMutantSnapshot(),
+        '.dart_tool/test_gates/dart_mutant/0.2/dart_mutant.snapshot',
+      );
+      expect(
+        dartMutantSnapshot((major: 2, minor: 9, patch: 3)),
+        '.dart_tool/test_gates/dart_mutant/2.9/dart_mutant.snapshot',
+      );
+    });
+
+    test('the command that fetches it', () {
+      expect(dartMutantFetch('/sdk/bin/dart'), [
+        '/sdk/bin/dart',
+        'pub',
+        'global',
+        'activate',
+        'dart_mutant',
+        '^0.2.0',
+      ]);
+      expect(
+        dartMutantFetch('dart', (major: 2, minor: 9, patch: 3)).last,
+        '^2.9.3',
+      );
+    });
+
+    test('the compiled program among what the command leaves', () {
+      expect(fetchedSnapshotDirectory, 'global_packages/dart_mutant/bin');
+      expect(isFetchedSnapshot('dart_mutant.dart-3.11.0.snapshot'), isTrue);
+      for (final name in [
+        'dart_mutant.dart-3.11.0.snapshot.tmp',
+        'other.dart-3.11.0.snapshot',
+        'x-dart_mutant.dart-3.11.0.snapshot',
+        'dart_mutant.dart-3.11.0.dill',
+        'dart_mutant.snapshot',
+        '',
+      ]) {
+        expect(isFetchedSnapshot(name), isFalse, reason: name);
+      }
+    });
+
+    test('the executable the environment names', () {
+      expect(dartMutantVariable, 'TEST_GATES_DART_MUTANT');
+      expect(namedDartMutant({}), isNull);
+      expect(namedDartMutant({'TEST_GATES_DART_MUTANT': ''}), isNull);
+      expect(namedDartMutant({'TEST_GATES_DART_MUTANT': '  '}), isNull);
+      expect(namedDartMutant({'PATH': '/bin'}), isNull);
+      expect(
+        namedDartMutant({'TEST_GATES_DART_MUTANT': ' /opt/dart_mutant '}),
+        '/opt/dart_mutant',
+      );
+    });
+
+    test('the last lines of what the command that fetches it printed', () {
+      expect(lastLines(''), isEmpty);
+      expect(lastLines('a\n\n  \nb  \r\n  c\n'), ['a', 'b', '  c']);
+      final many = [for (var line = 1; line <= 12; line++) 'line $line'];
+      expect(lastLines(many.join('\n')), many.sublist(2));
+      expect(lastLines(many.take(10).join('\n')), many.take(10));
+      expect(lastLines(many.take(11).join('\n')), many.sublist(1, 11));
+      expect(lastLines('a\nb\nc', 2), ['b', 'c']);
     });
 
     test('a program that was compiled into an executable of its own is not '
@@ -40,13 +102,7 @@ void main() {
         'dartx.exe',
         '',
       ]) {
-        expect(dartMutantCommands(executable).last, [
-          'dart',
-          'pub',
-          'global',
-          'run',
-          'dart_mutant',
-        ], reason: executable);
+        expect(dartOf(executable), 'dart', reason: executable);
       }
       for (final executable in [
         'dart',
@@ -55,7 +111,7 @@ void main() {
         '/sdk/bin/dart',
         'bin/dart',
       ]) {
-        expect(dartMutantCommands(executable).last.first, executable);
+        expect(dartOf(executable), executable);
       }
     });
 

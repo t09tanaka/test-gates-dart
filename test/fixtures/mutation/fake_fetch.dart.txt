@@ -1,0 +1,48 @@
+// Stands in for "dart pub global activate dart_mutant" in the tests of
+// `test_gates mutation`, so that they do not go to pub.dev. Kept as .txt so
+// that it is not analyzed or formatted with the package; the tests copy it
+// into a temporary directory and run it there, in the package.
+//
+// It appends the directory PUB_CACHE names to "fetch.log" and, like the
+// real command, leaves the compiled program below it:
+// global_packages/dart_mutant/bin/dart_mutant.dart-<SDK>.snapshot. That
+// "program" is the stand-in for the tool (fake_dart_mutant.dart).
+//
+// What it does is read from "fake.json" in the current directory (every key
+// is optional):
+//
+//   "fetchExit": 69        it prints "fetchOutput" and ends with this exit
+//                          code, without leaving anything
+//   "fetchOutput": "..."   what it prints
+//   "fetchNothing": true   it ends with exit code 0 and leaves no program
+//   "fetched": { ... }     what "fake.json" holds after it ran: what the
+//                          tool that was fetched does
+import 'dart:convert';
+import 'dart:io';
+
+void main() {
+  final file = File('fake.json');
+  final fake = file.existsSync()
+      ? jsonDecode(file.readAsStringSync()) as Map<String, Object?>
+      : const <String, Object?>{};
+  final cache = Platform.environment['PUB_CACHE'];
+  File('fetch.log').writeAsStringSync('$cache\n', mode: FileMode.append);
+  stdout.write(fake['fetchOutput'] ?? '');
+  final code = fake['fetchExit'] as int?;
+  if (code != null) {
+    exitCode = code;
+    return;
+  }
+  if (fake['fetchNothing'] == true) {
+    return;
+  }
+  final bin = Directory('$cache/global_packages/dart_mutant/bin')
+    ..createSync(recursive: true);
+  File('${bin.path}/README.md').writeAsStringSync('not the program');
+  File('fake_dart_mutant.dart')
+      .copySync('${bin.path}/dart_mutant.dart-3.0.0.snapshot');
+  final after = fake['fetched'];
+  if (after != null) {
+    file.writeAsStringSync(jsonEncode(after));
+  }
+}

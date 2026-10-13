@@ -27,7 +27,7 @@ String? _readOrNull(String path) {
 /// The first of [candidates] that answers `--version` as the tool does, with
 /// the version it gave; `null` when none does. What each of the others did
 /// is added to [attempts].
-Future<({List<String> command, String version})?> _findDartMutant(
+Future<_Found?> _findDartMutant(
   List<List<String>> candidates,
   String dir,
   List<String> attempts,
@@ -63,6 +63,142 @@ Future<({List<String> command, String version})?> _findDartMutant(
   return null;
 }
 
+typedef _Found = ({List<String> command, String version});
+
+/// The lines that say how a tool the user installed is used instead.
+void _printByHand(Io io) {
+  io.err(
+    '$executable mutation: to use one you installed yourself, install it '
+    'and set $dartMutantVariable to the path of its executable '
+    '(~/.pub-cache/bin/$dartMutant):',
+  );
+  io.err('  ${dartMutantInstall()}');
+}
+
+/// Fetches the tool into [target] with [command], which is run in [dir]
+/// with `PUB_CACHE` set to a temporary directory: only the compiled program
+/// is kept. It is written next to [target] and moved there, so a run that
+/// starts the tool at the same moment reads the old file or the new one,
+/// never half of one.
+///
+/// Returns `null` when [target] was written, else the exit code of
+/// `mutation`, which has been told why.
+Future<int?> _fetchDartMutant(
+  List<String> command,
+  String dir,
+  File target,
+  Io io,
+) async {
+  final cache = Directory.systemTemp.createTempSync('test_gates_dart_mutant_');
+  try {
+    final signals = SignalWatch();
+    final CommandResult result;
+    try {
+      result = await runCommand(
+        command,
+        workingDirectory: dir,
+        capture: true,
+        signals: signals,
+        environment: {'PUB_CACHE': cache.path},
+      );
+    } finally {
+      await signals.cancel();
+    }
+    if (result.signal != null) {
+      io.err('$executable mutation: interrupted. Nothing was judged');
+      return signalExitCode(result.signal!);
+    }
+    final shown = '"${command.join(' ')}"';
+    String? problem;
+    if (result.exitCode == null) {
+      problem = '$shown could not be started (${result.startError})';
+    } else if (result.exitCode != 0) {
+      problem = '$shown ended with exit code ${result.exitCode}';
+    } else {
+      final built = Directory(
+        '${cache.path}/$fetchedSnapshotDirectory',
+      ).absolute;
+      final snapshots = built.existsSync()
+          ? [
+              for (final file in built.listSync().whereType<File>())
+                if (isFetchedSnapshot(file.uri.pathSegments.last)) file,
+            ]
+          : const <File>[];
+      if (snapshots.isEmpty) {
+        problem = '$shown did not compile it';
+      } else {
+        try {
+          target.parent.createSync(recursive: true);
+          final part = '${target.path}.$pid.tmp';
+          snapshots.first.copySync(part);
+          File(part).renameSync(target.path);
+        } on FileSystemException catch (error) {
+          problem = '${target.path} cannot be written (${error.message})';
+        }
+      }
+    }
+    if (problem == null) {
+      return null;
+    }
+    io.err(
+      '$executable mutation: $dartMutant ${dartMutantConstraint()} could '
+      'not be fetched from pub.dev: $problem',
+    );
+    for (final line in lastLines(result.output)) {
+      io.err('    $line');
+    }
+    _printByHand(io);
+    return 2;
+  } finally {
+    cache.deleteSync(recursive: true);
+  }
+}
+
+/// The tool that `mutation` keeps for the package in [dir]: the one that
+/// was fetched by an earlier run when it is there and answers with a
+/// supported version, else one that is fetched now with [fetch]. What is
+/// there and does not answer (the SDK is another one, the file is damaged)
+/// or is another version is replaced.
+///
+/// Returns the tool, or the exit code of `mutation`, which has been told
+/// why.
+Future<({_Found? found, int? exitCode})> _keptDartMutant(
+  List<String> fetch,
+  String dart,
+  String dir,
+  Io io,
+) async {
+  final place = dartMutantSnapshot().replaceAll('/', Platform.pathSeparator);
+  final target = File(_inPackage(dir, dartMutantSnapshot()));
+  // Relative to the package: that is where the tool is started.
+  final command = dartMutantCommand(dart, place);
+  if (target.existsSync()) {
+    final kept = await _findDartMutant([command], dir, []);
+    if (kept != null && isSupportedDartMutant(kept.version)) {
+      return (found: kept, exitCode: null);
+    }
+  }
+  io.out(
+    '$executable mutation: fetching $dartMutant ${dartMutantConstraint()} '
+    'from pub.dev into $place (once per package)',
+  );
+  final failed = await _fetchDartMutant(fetch, dir, target, io);
+  if (failed != null) {
+    return (found: null, exitCode: failed);
+  }
+  final attempts = <String>[];
+  final fetched = await _findDartMutant([command], dir, attempts);
+  if (fetched == null) {
+    io.err(
+      '$executable mutation: $dartMutant was fetched into $place, and does '
+      'not answer as the tool does: ${attempts.single}',
+    );
+    _printByHand(io);
+    return (found: null, exitCode: 2);
+  }
+  return (found: fetched, exitCode: null);
+}
+
 /// Mutation test of the gates. The mutants are made and run by `dart_mutant`,
 /// which is started as a program of its own; this command tells it which
 /// files and tests (the gates of test-gates.json, as a plan file) and judges
@@ -71,14 +207,19 @@ Future<({List<String> command, String version})?> _findDartMutant(
 /// [rest] (what follows `--`) is handed to `dart_mutant run` as it is.
 /// [force] becomes its `--force`, and [only] (`--gate`) its `--only`.
 ///
-/// [candidates] are the commands that are tried to start the tool, and
-/// [grace] is how long the tool gets to end after a signal. They are
-/// parameters for the tests of this package only; the command line always
-/// uses [dartMutantCommands] and [handOverGrace].
+/// The tool is the one that [environment] names ([dartMutantVariable]), or
+/// else one that is kept below `.dart_tool` of the package and fetched from
+/// pub.dev when it is not there yet. What is on PATH is not looked at.
+///
+/// [candidates] are commands that are tried to start the tool instead,
+/// [fetch] is the command that fetches it, and [grace] is how long the tool
+/// gets to end after a signal. They are parameters for the tests of this
+/// package only; the command line always uses [dartMutantFetch] and
+/// [handOverGrace], and the environment of the process.
 ///
 /// Returns the exit code: 0 when every mutant is detected or allowed, 1
-/// otherwise, 2 when the tool is missing, is not a supported version or
-/// refuses its command line, 130 / 143 / 129 when interrupted.
+/// otherwise, 2 when the tool cannot be fetched, is not a supported version
+/// or refuses its command line, 130 / 143 / 129 when interrupted.
 Future<int> runMutation(
   String dir,
   String? reportOption,
@@ -88,6 +229,8 @@ Future<int> runMutation(
   List<String> only = const [],
   bool listNotEvaluable = false,
   List<List<String>>? candidates,
+  List<String>? fetch,
+  Map<String, String>? environment,
   Duration grace = handOverGrace,
 }) async {
   final manifest = readManifest(dir);
@@ -98,20 +241,48 @@ Future<int> runMutation(
     throw UsageError(problem);
   }
 
-  final tried = candidates ?? dartMutantCommands(Platform.resolvedExecutable);
-  final attempts = <String>[];
-  final found = await _findDartMutant(tried, manifest.dir, attempts);
-  if (found == null) {
-    io.err(
-      '$executable mutation: $dartMutant was not found. It is the tool that '
-      'makes the mutants and runs the tests on them. Install it with:',
-    );
-    io.err('  ${dartMutantInstall()}');
-    io.err('What was tried:');
-    for (final attempt in attempts) {
-      io.err('  - $attempt');
+  final named = namedDartMutant(environment ?? Platform.environment);
+  final tried =
+      candidates ??
+      [
+        if (named != null) [named],
+      ];
+  final _Found found;
+  if (tried.isNotEmpty) {
+    final attempts = <String>[];
+    final answered = await _findDartMutant(tried, manifest.dir, attempts);
+    if (answered == null) {
+      io.err(
+        candidates == null
+            ? '$executable mutation: $dartMutantVariable names "$named", '
+                  'and that is not $dartMutant, the tool that makes the '
+                  'mutants and runs the tests on them. Without the variable '
+                  'the tool is fetched from pub.dev. To install it '
+                  'yourself:'
+            : '$executable mutation: $dartMutant was not found. It is the '
+                  'tool that makes the mutants and runs the tests on them. '
+                  'Install it with:',
+      );
+      io.err('  ${dartMutantInstall()}');
+      io.err('What was tried:');
+      for (final attempt in attempts) {
+        io.err('  - $attempt');
+      }
+      return 2;
     }
-    return 2;
+    found = answered;
+  } else {
+    final dart = dartOf(Platform.resolvedExecutable);
+    final kept = await _keptDartMutant(
+      fetch ?? dartMutantFetch(dart),
+      dart,
+      manifest.dir,
+      io,
+    );
+    if (kept.found == null) {
+      return kept.exitCode!;
+    }
+    found = kept.found!;
   }
   if (!isSupportedDartMutant(found.version)) {
     io.err(

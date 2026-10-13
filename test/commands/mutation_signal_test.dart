@@ -11,10 +11,10 @@ import 'package:test/test.dart';
 
 import 'package_fixture.dart';
 
-/// `mutation` interrupted while the tool is at work. The tool is found on
-/// PATH, as a shell script that starts it, the way `dart pub global activate`
-/// installs an executable: the process that `mutation` starts is the shell,
-/// and the shell does not pass a signal on.
+/// `mutation` interrupted while the tool is at work. The tool is one that
+/// TEST_GATES_DART_MUTANT names, a shell script that starts it, the way
+/// `dart pub global activate` installs an executable: the process that
+/// `mutation` starts is the shell, and the shell does not pass a signal on.
 void main() {
   late PackageFixture package;
 
@@ -46,7 +46,7 @@ void main() {
       [File('bin/test_gates.dart').absolute.path, 'mutation', '--dir', '.'],
       workingDirectory: package.dir.path,
       environment: {
-        'PATH': '${package.dir.path}/bin:${Platform.environment['PATH']}',
+        'TEST_GATES_DART_MUTANT': '${package.dir.path}/bin/dart_mutant',
       },
     );
     final started = package.file('started');
