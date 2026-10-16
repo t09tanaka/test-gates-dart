@@ -1020,58 +1020,81 @@ void main(List<String> arguments) {
     });
   });
 
-  test('a member of a pub workspace: the pubspec and the lock file of the '
-      'root are part of what every gate depends on', () async {
-    // The root of the workspace, with the package below it.
-    package.write('pubspec.yaml', 'name: root\nworkspace:\n  - packages/app\n');
-    package.write('pubspec.lock', 'packages: {}\n');
-    const member = 'packages/app';
-    final dir = '${package.dir.path}/$member';
-    package.write('$member/pubspec.yaml', 'name: app\nresolution: workspace\n');
-    package.write('$member/lib/a.dart', sourceA);
-    package.write('$member/lib/b.dart', sourceB);
-    package.write('$member/lib/a_test.dart', '');
-    package.write('$member/test/b_test.dart', '');
-    package.write('$member/test-gates.json', package.read('test-gates.json'));
-    package.write(
-      '$member/fake.json',
-      jsonEncode({'report': everythingKilled}),
+  // Also for the default of --dir, `.`, run in the package itself.
+  for (final here in [false, true]) {
+    test(
+      'a member of a pub workspace: the pubspec and the lock file of the '
+      'root are part of what every gate depends on (${here ? '--dir .' : 'a path'})',
+      () async {
+        // The root of the workspace, with the package below it.
+        package.write(
+          'pubspec.yaml',
+          'name: root\nworkspace:\n  - packages/app\n',
+        );
+        package.write('pubspec.lock', 'packages: {}\n');
+        const member = 'packages/app';
+        final dir = '${package.dir.path}/$member';
+        package.write(
+          '$member/pubspec.yaml',
+          'name: app\nresolution: workspace\n',
+        );
+        package.write('$member/lib/a.dart', sourceA);
+        package.write('$member/lib/b.dart', sourceB);
+        package.write('$member/lib/a_test.dart', '');
+        package.write('$member/test/b_test.dart', '');
+        package.write(
+          '$member/test-gates.json',
+          package.read('test-gates.json'),
+        );
+        package.write(
+          '$member/fake.json',
+          jsonEncode({'report': everythingKilled}),
+        );
+        for (final name in ['fake_dart_mutant.dart', 'fake_fetch.dart']) {
+          package.file(name).copySync('$dir/$name');
+        }
+        final before = Directory.current;
+        if (here) {
+          Directory.current = dir;
+          addTearDown(() => Directory.current = before);
+        }
+        Future<int> run() => runMutation(
+          here ? '.' : dir,
+          null,
+          const [],
+          package.io,
+          candidates: [fake],
+          ci: false,
+        );
+        expect(await run(), 0, reason: package.err.join('\n'));
+        package.out.clear();
+        expect(await run(), 0);
+        expect(
+          package.out.first,
+          startsWith('test_gates mutation: nothing that'),
+        );
+        package.write('pubspec.lock', 'packages: {a: {}}\n');
+        package.out.clear();
+        expect(await run(), 0);
+        expect(
+          package.out.first,
+          'test_gates mutation: running every mutant of the gates (--force): '
+          'changed since the last run: ../../pubspec.lock',
+        );
+        package.write(
+          'pubspec.yaml',
+          'name: root\nworkspace:\n  - packages/app\n'
+              'dependency_overrides:\n  a: 1.0.0\n',
+        );
+        package.out.clear();
+        expect(await run(), 0);
+        expect(
+          package.out.first,
+          endsWith('changed since the last run: ../../pubspec.yaml'),
+        );
+      },
     );
-    for (final name in ['fake_dart_mutant.dart', 'fake_fetch.dart']) {
-      package.file(name).copySync('$dir/$name');
-    }
-    Future<int> run() => runMutation(
-      dir,
-      null,
-      const [],
-      package.io,
-      candidates: [fake],
-      ci: false,
-    );
-    expect(await run(), 0, reason: package.err.join('\n'));
-    package.out.clear();
-    expect(await run(), 0);
-    expect(package.out.first, startsWith('test_gates mutation: nothing that'));
-    package.write('pubspec.lock', 'packages: {a: {}}\n');
-    package.out.clear();
-    expect(await run(), 0);
-    expect(
-      package.out.first,
-      'test_gates mutation: running every mutant of the gates (--force): '
-      'changed since the last run: ../../pubspec.lock',
-    );
-    package.write(
-      'pubspec.yaml',
-      'name: root\nworkspace:\n  - packages/app\n'
-          'dependency_overrides:\n  a: 1.0.0\n',
-    );
-    package.out.clear();
-    expect(await run(), 0);
-    expect(
-      package.out.first,
-      endsWith('changed since the last run: ../../pubspec.yaml'),
-    );
-  });
+  }
 
   group('--gate', () {
     test('the gate is named with --only, the plan has only that gate, and '

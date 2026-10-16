@@ -213,7 +213,10 @@ Map<String, String> _packageContext(String dir, List<String> flutter) {
   }
   final context = <String, String>{};
   if (inWorkspace(pubspec)) {
-    var root = Directory(dir).absolute.parent;
+    // The path as it is on disk: `--dir .` (the default) or `packages/app/.` would
+    // otherwise start the way up one directory too low.
+    final package = Directory(dir).resolveSymbolicLinksSync();
+    var root = Directory(package).parent;
     var levels = 1;
     String? found;
     while (found == null) {
@@ -237,7 +240,7 @@ Map<String, String> _packageContext(String dir, List<String> flutter) {
       context['the root of the workspace'] = 'not found';
     } else {
       for (final file in workspaceFiles(levels)) {
-        context[file] = _fingerprintOf(_inPackage(dir, file)) ?? 'missing';
+        context[file] = _fingerprintOf(_inPackage(package, file)) ?? 'missing';
       }
     }
   }
