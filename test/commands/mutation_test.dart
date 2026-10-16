@@ -95,6 +95,7 @@ void main() {
     String? report,
     List<List<String>>? candidates,
     Map<String, String>? environment,
+    bool ci = false,
   }) => runMutation(
     package.dir.path,
     report,
@@ -107,7 +108,17 @@ void main() {
     candidates: environment == null ? candidates ?? [fake] : null,
     fetch: [Platform.resolvedExecutable, 'fake_fetch.dart'],
     environment: environment,
+    ci: ci,
   );
+
+  /// What was printed, without the lines that say which results of the last
+  /// run are reused (see the group "results of the last run").
+  List<String> shown() => [
+    for (final line in package.out)
+      if (!line.startsWith('test_gates mutation: running every mutant') &&
+          !line.startsWith('test_gates mutation: nothing that the'))
+        line,
+  ];
 
   /// The command lines the tool was started with (without `--version`).
   List<String> runs() => package.file('runs.log').existsSync()
@@ -128,7 +139,8 @@ void main() {
         'absolute paths', () async {
       tool({'report': everythingKilled});
       expect(await mutation(), 0);
-      expect(runs(), [standard()]);
+      // With no record of a run, every mutant is run.
+      expect(runs(), [standard(more: ' --force')]);
       expect(jsonDecode(package.read('plan.seen.json')), {
         'version': 1,
         'targets': [
@@ -142,7 +154,7 @@ void main() {
           },
         ],
       });
-      expect(package.out, [ok3]);
+      expect(shown(), [ok3]);
       expect(package.err, isEmpty);
     });
 
@@ -247,7 +259,7 @@ void main() {
         }),
       });
       expect(await mutation(), 0);
-      expect(package.out, [
+      expect(shown(), [
         'test_gates mutation: OK (mutants 1 / detected 0 (timeout 0) / '
             'allowed equivalent 1 / not evaluable 0 / unallowed survivors 0)',
       ]);
@@ -314,7 +326,7 @@ void main() {
         'missing: the failure is not passed over', () async {
       tool({'exit': 1, 'report': everythingKilled});
       expect(await mutation(), 1);
-      expect(package.out, isEmpty);
+      expect(shown(), isEmpty);
       expect(package.err, [
         'test_gates mutation: dart_mutant failed (exit code 1), and its '
             'report does not show why: no mutant of these gates survived and '
@@ -346,7 +358,7 @@ void main() {
         // A report that would pass.
         tool({'exit': code, 'report': everythingKilled});
         expect(await mutation(), code);
-        expect(package.out, isEmpty);
+        expect(shown(), isEmpty);
         expect(package.err, [
           'test_gates mutation: dart_mutant ended with exit code $code. '
               'Nothing was judged',
@@ -486,7 +498,7 @@ void main() {
         'runs this program', () async {
       tool({'report': everythingKilled});
       expect(await mutation(environment: {}), 0);
-      expect(package.out, [fetching, ok3]);
+      expect(shown(), [fetching, ok3]);
       expect(package.err, isEmpty);
       // A temporary directory, which is gone, and not the cache of the user.
       expect(fetches(), hasLength(1));
@@ -510,7 +522,7 @@ void main() {
       expect(await mutation(environment: {}), 0);
       package.out.clear();
       expect(await mutation(environment: {}), 0);
-      expect(package.out, [ok3]);
+      expect(shown(), [ok3]);
       expect(fetches(), hasLength(1));
       expect(runs(), hasLength(2));
     });
@@ -522,7 +534,7 @@ void main() {
         'fetched': {'version': '0.2.3', 'report': everythingKilled},
       });
       expect(await mutation(environment: {}), 0);
-      expect(package.out, [fetching, ok3]);
+      expect(shown(), [fetching, ok3]);
       expect(fetches(), hasLength(1));
     });
 
@@ -534,7 +546,7 @@ void main() {
         'fetched': {'version': '0.2.1', 'report': everythingKilled},
       });
       expect(await mutation(environment: {}), 0);
-      expect(package.out, [fetching, ok3]);
+      expect(shown(), [fetching, ok3]);
       expect(package.err, isEmpty);
       expect(fetches(), hasLength(1));
     });
@@ -543,7 +555,7 @@ void main() {
       package.write(kept, 'not a program');
       tool({'report': everythingKilled});
       expect(await mutation(environment: {}), 0);
-      expect(package.out, [fetching, ok3]);
+      expect(shown(), [fetching, ok3]);
       expect(package.read(kept), package.read('fake_dart_mutant.dart'));
     });
 
@@ -556,7 +568,7 @@ void main() {
       });
       package.write(reportFile, jsonEncode(everythingKilled));
       expect(await mutation(environment: {}), 2);
-      expect(package.out, [fetching]);
+      expect(shown(), [fetching]);
       expect(package.err, [
         'test_gates mutation: dart_mutant ^0.2.1 could not be fetched from '
             'pub.dev: "${Platform.resolvedExecutable} fake_fetch.dart" '
@@ -636,7 +648,7 @@ void main() {
           await mutation(environment: {'TEST_GATES_DART_MUTANT': named}),
           0,
         );
-        expect(package.out, [ok3]);
+        expect(shown(), [ok3]);
         expect(fetches(), isEmpty);
         expect(package.file(place).existsSync(), isFalse);
         expect(runs(), hasLength(1));
@@ -829,6 +841,127 @@ void main() {
     });
   });
 
+  group('results of the last run', () {
+    const record = '.dart_tool/test_gates/mutation-record.json';
+    const reused =
+        'test_gates mutation: nothing that the 2 gate(s) depend on changed '
+        'since the last run: their results are reused, and a Timeout is '
+        'measured again';
+
+    // lib/a.dart imports lib/c.dart, on its last line so that the mutants
+    // keep their places; nothing imports lib/d.dart.
+    const importing = "${sourceA}import 'c.dart';\n";
+    Map<String, Object?> killed() {
+      final report =
+          jsonDecode(jsonEncode(everythingKilled)) as Map<String, Object?>;
+      ((report['files'] as Map)['lib/a.dart'] as Map)['source'] = importing;
+      return report;
+    }
+
+    setUp(() {
+      package.write('lib/a.dart', importing);
+      package.write('lib/c.dart', 'int c() => 1;\n');
+      package.write('lib/d.dart', 'int d() => 1;\n');
+      package.write('pubspec.lock', 'packages: {}\n');
+      tool({'report': killed()});
+    });
+
+    test('no record: every mutant, and the run leaves one', () async {
+      expect(await mutation(), 0);
+      expect(
+        package.out.first,
+        'test_gates mutation: running every mutant of the gates (--force): '
+        'there is no record of a run to reuse',
+      );
+      expect(runs(), [standard(more: ' --force')]);
+      expect(package.file(record).existsSync(), isTrue);
+    });
+
+    test('nothing changed: the tool reuses its results, and is told nothing '
+        'more', () async {
+      expect(await mutation(), 0);
+      package.out.clear();
+      expect(await mutation(), 0);
+      expect(package.out, [reused, ok3]);
+      expect(runs().last, standard());
+    });
+
+    test('(a) a file the gate imports changed: every mutant of that gate, and '
+        'the report keeps the other one', () async {
+      expect(await mutation(), 0);
+      package.write('lib/c.dart', 'int c() => 2;\n');
+      package.out.clear();
+      expect(await mutation(), 0);
+      expect(package.out, [
+        'test_gates mutation: 1 of 2 gate(s) reused, 1 run again with every '
+            'mutant',
+        '  lib/a.dart: changed lib/c.dart',
+        ok3,
+      ]);
+      expect(runs().last, standard(more: ' --force --only lib/a.dart'));
+      expect(
+        (jsonDecode(package.read('report.before.json'))
+            as Map<String, Object?>)['files'],
+        {'lib/b.dart': isNotNull},
+      );
+    });
+
+    test('(c) a file no gate reaches changed: nothing runs again', () async {
+      expect(await mutation(), 0);
+      package.write('lib/d.dart', 'int d() => 2;\n');
+      package.out.clear();
+      expect(await mutation(), 0);
+      expect(package.out.first, reused);
+      expect(runs().last, standard());
+    });
+
+    test('(d) pubspec.lock changed: every mutant', () async {
+      expect(await mutation(), 0);
+      package.write('pubspec.lock', 'packages: {a: {}}\n');
+      package.out.clear();
+      expect(await mutation(), 0);
+      expect(
+        package.out.first,
+        'test_gates mutation: running every mutant of the gates (--force): '
+        'changed since the last run: pubspec.lock',
+      );
+      expect(runs().last, standard(more: ' --force'));
+    });
+
+    test('CI is set: every mutant', () async {
+      expect(await mutation(), 0);
+      package.out.clear();
+      expect(await mutation(ci: true), 0);
+      expect(package.out.first, endsWith('(--force): CI is set'));
+      expect(runs().last, standard(more: ' --force'));
+    });
+
+    test('a gate the tool wrote no result of runs again', () async {
+      tool({
+        'report': reportOf({
+          'lib/b.dart': [times('Killed'), minus('Killed')],
+        }),
+        'exit': 1,
+      });
+      expect(await mutation(), 1);
+      tool({'report': killed()});
+      package.out.clear();
+      expect(await mutation(), 0);
+      expect(package.out.take(2), [
+        'test_gates mutation: 1 of 2 gate(s) reused, 1 run again with every '
+            'mutant',
+        '  lib/a.dart: the last run left no result of it',
+      ]);
+    });
+
+    test('a run that ends without a verdict leaves no record', () async {
+      expect(await mutation(), 0);
+      tool({'exit': 2});
+      expect(await mutation(), 2);
+      expect(package.file(record).existsSync(), isFalse);
+    });
+  });
+
   group('--gate', () {
     test('the gate is named with --only, the plan has only that gate, and '
         'only that gate is judged', () async {
@@ -846,7 +979,7 @@ void main() {
           'tests': ['test/b_test.dart'],
         },
       ]);
-      expect(package.out, [
+      expect(shown(), [
         'test_gates mutation: OK for 1 of 2 gate(s) (--gate) (mutants 2 / '
             'detected 2 (timeout 0) / allowed equivalent 0 / not evaluable 0 '
             '/ unallowed survivors 0)',
@@ -922,9 +1055,9 @@ void main() {
       expect(await mutation(rest: ['--shard', '1/2'], report: 'part.json'), 0);
       expect(
         runs().single,
-        endsWith('--report ${root()}/part.json --shard 1/2'),
+        endsWith('--report ${root()}/part.json --force --shard 1/2'),
       );
-      expect(package.out, [
+      expect(shown(), [
         'test_gates mutation: a part of a run (--shard) was written to '
             'part.json. It is not judged: put the parts together with '
             '"dart_mutant merge" and judge the result with '
@@ -936,7 +1069,7 @@ void main() {
     test('--shard=1/2 is a part as well', () async {
       tool({'report': partOf2});
       expect(await mutation(rest: ['--shard=1/2']), 0);
-      expect(package.out.single, contains('It is not judged'));
+      expect(shown().single, contains('It is not judged'));
     });
 
     test('a gate that is not in the part fails', () async {
@@ -990,7 +1123,7 @@ void main() {
         'counted', () async {
       tool({'report': report});
       expect(await mutation(), 0);
-      expect(package.out, [summary]);
+      expect(shown(), [summary]);
     });
 
     test('with it they are listed, with what the tool says about them, and '
@@ -1015,7 +1148,7 @@ void main() {
         '  ~ lib/b.dart:1:23 / ArithmeticOperator / - → + (RuntimeError)',
         summary,
       ];
-      expect(package.out, listed);
+      expect(shown(), listed);
       expect(package.err, isEmpty);
       package.out.clear();
       expect(
@@ -1027,7 +1160,7 @@ void main() {
         ], package.io),
         0,
       );
-      expect(package.out, listed);
+      expect(shown(), listed);
     });
 
     test('nothing is said when every mutant was evaluated', () {
@@ -1041,7 +1174,7 @@ void main() {
         ], package.io),
         0,
       );
-      expect(package.out, [ok3]);
+      expect(shown(), [ok3]);
     });
   });
 
@@ -1060,7 +1193,7 @@ void main() {
         expect(await mutation(), 0);
         package.out.clear();
         expect(result(), 0);
-        expect(package.out, [ok3]);
+        expect(shown(), [ok3]);
         expect(runs(), hasLength(1));
       },
     );

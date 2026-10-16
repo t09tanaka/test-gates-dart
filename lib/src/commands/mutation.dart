@@ -3,13 +3,16 @@ import 'dart:io';
 
 import '../args.dart';
 import '../gate_path.dart';
+import '../import_policy.dart';
 import '../io/files.dart';
 import '../io/process.dart';
+import '../mutation_reuse.dart';
 import '../mutation_run.dart';
 import '../spec_path.dart';
 import '../types.dart';
 import 'lcov.dart';
 import 'mutation_result.dart';
+import 'mutation_reuse.dart';
 import 'output.dart';
 
 String _inPackage(String dir, String relativePath) =>
@@ -231,6 +234,7 @@ Future<int> runMutation(
   List<List<String>>? candidates,
   List<String>? fetch,
   Map<String, String>? environment,
+  bool? ci,
   Duration grace = handOverGrace,
 }) async {
   final manifest = readManifest(dir);
@@ -309,21 +313,6 @@ Future<int> runMutation(
   ).absolute.path;
   final gates = selected ?? [for (final gate in manifest.gates) gate.path];
 
-  // A report of an earlier run must not be judged if this run writes none.
-  // With --gate that holds for the gates of this run; what the report says
-  // about the other gates is kept.
-  // A file of another kind is left alone: the tool refuses to replace it,
-  // and what it holds cannot pass for a result.
-  final existing = _readOrNull(reportPath);
-  if (existing != null && isReport(existing)) {
-    final left = selected == null ? null : reportWithout(existing, selected);
-    if (left == null) {
-      File(reportPath).deleteSync();
-    } else {
-      File(reportPath).writeAsStringSync(left);
-    }
-  }
-
   // The gates the tool can be given, each with its tests, and why the
   // others cannot be mutation tested.
   final failures = <String, String>{};
@@ -354,19 +343,93 @@ Future<int> runMutation(
   final planned = [for (final target in targets) target.file];
   final part = asksForPart(rest);
 
+  // Which gates keep the results of the last run, and why the others do
+  // not. The tool is then told to run every mutant of the gates that do not
+  // (--force with --only), and its own reuse of the results of a file is
+  // left to the run in which nothing changed.
+  final existing = _readOrNull(reportPath);
+  final reportText = existing != null && isReport(existing) ? existing : null;
+  final ReuseInputs? inputs;
+  final ReusePlan? reuse;
+  if (targets.isEmpty) {
+    inputs = null;
+    reuse = null;
+  } else {
+    final variables = environment ?? Platform.environment;
+    final inCi = ci ?? (variables['CI'] ?? '').isNotEmpty;
+    inputs = readReuseInputs(
+      manifest.dir,
+      targets,
+      aliases: aliasesFor(
+        packageNameIn(manifest.dir),
+        manifest.settings.importAliases,
+      ),
+      dartMutantVersion: found.version,
+      rest: rest,
+      reportFile: reportFile,
+      reportText: reportText,
+    );
+    reuse = planReuse(
+      forced: force
+          ? '--force'
+          : part
+          ? 'a part of a run (--shard)'
+          : inCi
+          ? 'CI is set'
+          : null,
+      problem: inputs.problem,
+      recordText: inputs.recordText,
+      context: inputs.context,
+      report: inputs.report,
+      timedOut: inputs.timedOut,
+      gates: inputs.gates,
+    );
+    // The lines below the first say which gates, and are indented.
+    for (final line in describeReuse(reuse)) {
+      io.out(line.startsWith(' ') ? line : '$executable mutation: $line');
+    }
+  }
+  final rerun = <String>[
+    for (final entry in reuse?.rerun ?? const <({String gate, String why})>[])
+      entry.gate,
+  ];
+  final runAll = reuse == null || reuse.full != null;
+
+  // A report of an earlier run must not be judged if this run writes none.
+  // That holds for the gates of this run: what the report says about the
+  // other gates (with --gate), and about the gates whose results are reused,
+  // is kept.
+  // A file of another kind is left alone: the tool refuses to replace it,
+  // and what it holds cannot pass for a result.
+  if (reportText != null) {
+    final cleared = rerun.isNotEmpty ? rerun : selected;
+    final left = cleared == null ? null : reportWithout(reportText, cleared);
+    if (left == null) {
+      File(reportPath).deleteSync();
+    } else {
+      File(reportPath).writeAsStringSync(left);
+    }
+  }
+
   int? toolExitCode;
   if (targets.isNotEmpty) {
     final plan = File(_inPackage(manifest.dir, planFile));
     plan.parent.createSync(recursive: true);
     plan.writeAsStringSync(jsonEncode(buildPlan(targets)));
+    // A run that does not end as it should leaves no record.
+    deleteRecord(manifest.dir);
     final command = [
       ...found.command,
       ...dartMutantArguments(
         dir: manifest.dir,
         plan: plan.path,
         report: reportPath,
-        force: force,
-        only: selected == null ? null : planned,
+        force: runAll || rerun.isNotEmpty,
+        only: rerun.isNotEmpty
+            ? rerun
+            : selected == null
+            ? null
+            : planned,
         rest: rest,
       ),
     ];
@@ -433,6 +496,15 @@ Future<int> runMutation(
     );
     io.err('$executable mutation: FAILED (the run did not end as it should)');
     return 1;
+  }
+
+  // What the next run can reuse.
+  if (inputs != null && !part && written != null && isReport(written)) {
+    final missing = missingFromReport(written, planned);
+    writeRecord(manifest.dir, inputs, written, [
+      for (final path in planned)
+        if (!missing.contains(path)) path,
+    ]);
   }
 
   if (part) {
