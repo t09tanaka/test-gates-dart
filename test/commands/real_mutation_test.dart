@@ -140,10 +140,12 @@ void main() {
     expect(printed, hasLength(survivors));
     manifest(printed);
 
-    // Nothing changed for the tool: it takes its results from the last run,
-    // and still ends with exit code 1. The verdict is that of the report.
+    // test-gates.json changed (and CI may be set), so every mutant is run
+    // again, and the tool still ends with exit code 1. The verdict is that
+    // of the report.
     expect(await cli(['mutation']), 0);
     expect(out, [
+      startsWith('test_gates mutation: running every mutant of the gates '),
       'test_gates mutation: OK (mutants $mutants / detected $detected '
           '(timeout 0) / allowed equivalent $survivors / not evaluable '
           '$notEvaluable / unallowed survivors 0)',
@@ -197,10 +199,18 @@ void main() {
     }
     expect(separateCode, 0);
     expect(await cli(['all']), 0);
-    expect(
-      [...out, ...err],
-      [...separate, 'test_gates all: OK (check, test, timezones, mutation)'],
-    );
+    // The first line of mutation says what is reused, and that is not the
+    // same in a second run.
+    List<String> verdicts(List<String> lines) => [
+      for (final line in lines)
+        if (!line.startsWith('test_gates mutation: running every mutant') &&
+            !line.startsWith('test_gates mutation: nothing that the'))
+          line,
+    ];
+    expect(verdicts([...out, ...err]), [
+      ...verdicts(separate),
+      'test_gates all: OK (check, test, timezones, mutation)',
+    ]);
     // And without the last allowance, all stops where mutation stops.
     File('${dir.path}/test-gates.json').writeAsStringSync(
       File('${dir.path}/test-gates.json').readAsStringSync().replaceFirst(
@@ -218,7 +228,7 @@ void main() {
       await cli(['mutation', '--report', 'part.json', '--', '--shard', '1/2']),
       0,
     );
-    expect(out.single, contains('a part of a run (--shard) was written'));
+    expect(out.last, contains('a part of a run (--shard) was written'));
     expect(
       run(['mutation-result', '--dir', dir.path, '--report', 'part.json'], io),
       1,

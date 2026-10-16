@@ -80,6 +80,25 @@
       "impact": "A run of an unsupported version, of other files than the gates, or one that stopped early is judged as if it were the full run, or a report of an earlier run passes for this one"
     },
     {
+      "path": "lib/src/mutation_reuse.dart",
+      "decides": "Which gates mutation runs again and which keep the results of the last run: what each gate depends on through its imports and those of its tests, what may affect every gate, and the record a run leaves",
+      "impact": "A gate keeps a Killed of the last run after a file it imports, a helper of its test, pubspec.lock or the SDK changed, so a mutant that survives now is not seen",
+      "expectedTimeouts": [
+        {
+          "mutator": "ConditionalExpression",
+          "original": "seen.add(target)",
+          "replacement": "true",
+          "reason": "Every import is followed again, also to a file that was seen: two files that import each other are followed forever"
+        },
+        {
+          "mutator": "UpdateOperator",
+          "original": "--",
+          "replacement": "++",
+          "reason": "The number of directories grows instead of shrinking, so the loop over the directories above a test never ends"
+        }
+      ]
+    },
+    {
       "path": "lib/src/mutation_result.dart",
       "decides": "Whether a mutation run passes: which mutants count as detected, which survivors an allowance covers, when an allowance is stale or ambiguous, how many timeouts are tolerated, and that a part of a run is no result",
       "impact": "A surviving mutant, a stale allowance or an unevaluated mutant passes silently and every project using test_gates loses its real guard"

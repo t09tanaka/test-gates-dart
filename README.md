@@ -36,7 +36,7 @@ dart run test_gates --help
 
 ```yaml
 dev_dependencies:
-  test_gates: ^0.2.3
+  test_gates: ^0.3.0
 ```
 
 Or once per machine, outside of any package:
@@ -101,7 +101,7 @@ Coming from 0.1: [Upgrading from 0.1](#upgrading-from-01).
    exec dart run test_gates all
    ```
 
-   That is `check`, `test`, `timezones` and `mutation`, one after the other in one start of the tool, until the first that fails ([`all`](#test_gates-all---selfcheck---force---no-mutation)). `mutation` runs nothing for a gate that did not change. In CI, where the full run counts:
+   That is `check`, `test`, `timezones` and `mutation`, one after the other in one start of the tool, until the first that fails ([`all`](#test_gates-all---selfcheck---force---no-mutation)). `mutation` runs nothing again for a gate when nothing it depends on changed ([Results of the last run](#results-of-the-last-run-and---force)). In CI, where the full run counts:
 
    ```bash
    dart run test_gates all --selfcheck --force
@@ -603,6 +603,7 @@ dart run test_gates mutation
 ```
 
 ```
+test_gates mutation: running every mutant of the gates (--force): there is no record of a run to reuse
 dart_mutant run: the dependency "test_gates" is at a path relative to the package (../../), so it cannot be run from working copies. The mutants are run one at a time, in place (--jobs 1), each with a start of the test runner of its own
   lib/bulk_discount.dart: 44 of 45 mutant(s) with "dart test --fail-fast --timeout 10s test/bulk_discount_test.dart" (1 do not compile)
   lib/bulk_discount.dart: 45 mutants / killed 43 / survived 1 / timeout 0 / compile error 1 (1 found before the run) (36.3s)
@@ -651,8 +652,8 @@ Its version is checked in the same way. Give the range when you install it: with
 
 1. Finds the test of each gate the way [`check`](#test_gates-check) does: `lib/a/b.dart` → `lib/a/b_test.dart` and `test/a/b_test.dart` (`settings.spec`). Every one that exists is run on the mutants of the gate. A gate without a test, and a gate whose file is gone, fails, and is not given to the tool; with `"suffixes": []` that is every gate.
 2. Writes the gates and their tests as a plan file for the tool, `.dart_tool/test_gates/mutation-plan.json` (`.dart_tool` is ignored by git in every Dart project).
-3. Takes what the report of an earlier run says about these gates out of it (`settings.stryker.reportFile`, default `reports/mutation/mutation.json`; `--report <path>` for another place, relative to the package), and deletes the report when nothing is left. (A file there that is not a mutation report is left as it is; `dart_mutant` refuses to replace it, with exit code 2.) Whatever is judged in step 5 was then written by this run, also when the tool ends without writing anything.
-4. Starts `dart_mutant run --dir <package> --plan <the plan> --report <the report>` in the package, with `--force` when `mutation` was given it, with `--only <path>` for every `--gate <path>`, and with what follows `--`. What the tool prints goes to the terminal as it is.
+3. Decides which gates keep the results of the last run, and says so in its first line (see [Results of the last run](#results-of-the-last-run-and---force)). Takes what the report of an earlier run says about the gates that are run out of it (`settings.stryker.reportFile`, default `reports/mutation/mutation.json`; `--report <path>` for another place, relative to the package), and deletes the report when nothing is left. (A file there that is not a mutation report is left as it is; `dart_mutant` refuses to replace it, with exit code 2.) Whatever is judged in step 5 was then written by this run, also when the tool ends without writing anything.
+4. Starts `dart_mutant run --dir <package> --plan <the plan> --report <the report>` in the package, with `--force --only <path>` for every gate that is run again (when every gate of the run is: `--force` alone, or `--force --only <path>` for every `--gate <path>`), with `--only <path>` for every `--gate <path>` when nothing is run again, and with what follows `--`. What the tool prints goes to the terminal as it is.
 5. Judges the report, see below.
 
 ### What follows `--` is for `dart_mutant`
@@ -714,12 +715,27 @@ A `Timeout` counts as detected, but an unexplained one fails the run. The rules 
 
 ### Results of the last run, and `--force`
 
-`dart_mutant` keeps the results of its last run (`.dart_tool/dart_mutant/incremental.json`) and runs a gate again only when the gate, its tests, the test command or the tool changed. A `Timeout` is measured again every time. The judgement is always made again, on the current `test-gates.json`, so removing an allowance fails the next run without anything being tested.
+`mutation` runs a gate again only when something its results can depend on changed, and then runs every mutant of it. What it can depend on is the gate, its tests, and every file of the package that one of them imports, exports or has as a part, however many imports away (a helper of a test, a file the gate calls). Each run writes down a fingerprint of each of these files, per gate, in `.dart_tool/test_gates/mutation-record.json`, and the next run compares them. The first line says what it found:
 
-**A file that the gate imports is not part of this.** When `lib/order_total.dart` is unchanged and `lib/shipping_fee.dart`, which it calls, changed, the results of `order_total.dart` are reused as they are. The same goes for a helper that the test imports, for `pubspec.lock`, and for the SDK. `--force` tests everything:
+```
+test_gates mutation: 1 of 2 gate(s) reused, 1 run again with every mutant
+  lib/bulk_discount.dart: changed lib/bulk_discount.dart
+```
 
-- **pre-push: `test_gates mutation`.** Nothing is run when no gate changed, apart from the mutants that timed out.
-- **CI, and before a release: `test_gates mutation --force`.** CI has no results to start from anyway, and the full run is the one that counts.
+(That is `example/` after a change of `lib/bulk_discount.dart`. A change of a file it imported, or of a helper of its test, would be named in the same way.)
+
+- **A gate that runs again runs with every mutant.** It is given to `dart_mutant` with `--force --only <path>`: the results that tool keeps per file (`.dart_tool/dart_mutant/incremental.json`), which only look at the file, its tests, the test command and the tool, are not used for it. The other gates keep their results in the report.
+- **When nothing changed, nothing is run again**, apart from the mutants that timed out: `dart_mutant` measures a `Timeout` again every time. When some gates run again, a gate with a mutant that timed out in the last run is one of them, so that its `Timeout` is measured again as well.
+- **A file that no gate reaches changes nothing**, with one exception: a gate whose tests (or the files they import) import `dart:io`, `package:file` or `package:test_descriptor`, or name `matchesGoldenFile` or `rootBundle`, can read any file of the package (a fixture, a golden file). Such a gate runs again when any file of the package that git lists (tracked, or untracked and not ignored) changed. Outside a git work tree the files cannot be listed, and it runs again every time.
+- A `flutter_test_config.dart` in the directory of a test or above it is run by `flutter test` around that test without an import, and counts as one of its files.
+- **Every mutant of every gate is run** (`--force` is handed to `dart_mutant`) when the run is given `--force`, when the environment variable `CI` is set, for a part of a run (`--shard`), when there is no record or it cannot be read, when the report is not the one the last run left (deleted, or written by another run), when what a gate depends on cannot be told from its imports (a file it imports is missing, a URI that is not written out as Dart reads it, an import that leaves the package), and when one of these changed: `pubspec.yaml`, `pubspec.lock`, `pubspec_overrides.yaml`, `analysis_options.yaml`, `dart_test.yaml`, `build.yaml`, `test-gates.json`, for a member of a pub workspace (`resolution: workspace`) the `pubspec.yaml` and `pubspec.lock` of the root of the workspace, the version of the Dart SDK that runs `test_gates`, for a Flutter package (a dependency with `sdk: flutter`) what `flutter --version --machine` reports (or `flutter --version`; when neither answers, that it cannot be told, which is compared like a version), the version of `test_gates` or of `dart_mutant`, the options after `--`, or `--report`. The first line says which.
+
+The judgement is always made again, on the current `test-gates.json`. Removing an allowance changes that file, so the next run runs every mutant and fails on the survivor.
+
+- **pre-push: `test_gates mutation`.** Nothing is run when nothing a gate depends on changed, apart from the mutants that timed out.
+- **CI, and before a release: `test_gates mutation --force`.** CI has no results to start from anyway, and `CI` is set there, which runs every mutant without the option as well.
+
+The tests of a gate are its own tests only (see [What it does](#what-it-does)): `dart_mutant` runs no other test file on its mutants, so a change to another test that imports the gate does not make it run again.
 
 ### One gate at a time: `--gate`
 
@@ -733,6 +749,7 @@ dart run test_gates mutation --force --gate lib/shipping_fee.dart --gate lib/bul
 After the full run above (the results of the gate are taken from it):
 
 ```
+test_gates mutation: nothing that the 1 gate(s) depend on changed since the last run: their results are reused, and a Timeout is measured again
 dart_mutant run: the dependency "test_gates" is at a path relative to the package (../../), so it cannot be run from working copies. The mutants are run one at a time, in place (--jobs 1), each with a start of the test runner of its own
   lib/shipping_fee.dart: 24 mutants / killed 22 / survived 1 / timeout 0 / compile error 1 (1 found before the run) (24 from the last run, 0.0s)
 dart_mutant run: 1 surviving mutant(s)
@@ -804,6 +821,7 @@ dart run test_gates mutation-result
 The first of these lines prints:
 
 ```
+test_gates mutation: running every mutant of the gates (--force): --force
 dart_mutant run: the dependency "test_gates" is at a path relative to the package (../../), so it cannot be run from working copies. The mutants are run one at a time, in place (--jobs 1), each with a start of the test runner of its own
   lib/bulk_discount.dart: 22 of 45 mutant(s) with "dart test --fail-fast --timeout 10s test/bulk_discount_test.dart" (1 do not compile)
   lib/bulk_discount.dart: 23 of 45 mutants / killed 22 / survived 0 / timeout 0 / compile error 1 (1 found before the run) (18.5s)
@@ -815,6 +833,7 @@ dart_mutant run: FAILED (shard 1/2: 35 of 69 mutants / killed 33 / survived 1 / 
 test_gates mutation: a part of a run (--shard) was written to part-1.json. It is not judged: put the parts together with "dart_mutant merge" and judge the result with "test_gates mutation-result"
 ```
 
+- **A part runs every mutant of its gates** (`--force` is handed to `dart_mutant` whether it is given or not), and leaves no record of a run to reuse.
 - **A part is not judged.** Its report lists every mutant, and the ones of the other parts were not evaluated. `mutation` ends with 0 when the part was written and has every gate of the run in it, and says that it judged nothing. A survivor in the part does not change that: whether it is allowed is decided when all parts are there.
 - `dart_mutant merge` puts the parts together and refuses them when they are not all the parts of one run. Its exit code is 1 when a mutant survived; the verdict is that of `mutation-result` on the report it writes.
 - `mutation-result` refuses the report of a part as a whole (and a mutant with the status `Pending` in any report), so a part that is given to it by mistake cannot pass.
@@ -839,11 +858,11 @@ A mutant that does not compile costs next to nothing. One that compiles costs on
 | Package                                    | Gates | Mutants                           | Test runs at a time (on a machine with 12 logical processors) |
 | ------------------------------------------ | ----- | --------------------------------- | ------------------- |
 | [`example/`](example)                      | 2     | 69, of which 2 do not compile     | 1, in place, a start of the test runner for each (it has a `path:` dependency) |
-| This package, its own gates                | 15    | 2841, of which 274 do not compile | 3, in working copies (the default there) |
+| This package, its own gates                | 16    | 3215, of which 350 do not compile | 3, in working copies (the default there) |
 
-In `example/` a full run is 67 test runs, one at a time. For this package 2567 mutants are run, three at a time on that machine, most of them by a process of their own: the mutants are built into 13 of the 15 gates; in its workflow every gate is a job of its own ([`--gate`](#one-gate-at-a-time---gate)).
+In `example/` a full run is 67 test runs, one at a time. For this package 2865 mutants are run, three at a time on that machine, most of them by a process of their own: the mutants are built into 14 of the 16 gates; in its workflow every gate is a job of its own ([`--gate`](#one-gate-at-a-time---gate)).
 
-Of the 2841 mutants of this package 2559 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
+Of the 3215 mutants of this package 2855 are killed, 6 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
 
 ## `test_gates mutation-result [--report <path>]`
 
@@ -954,6 +973,7 @@ reference: overall line coverage 100.00% (16/16, not gated)
   ✓ lib/shipping_fee.dart: 6/6 lines, 3/3 branches
 test_gates lcov: OK (2 gate(s) at 100% line and branch coverage)
 test_gates timezones: OK (no gate names DateTime, so no test was run: 2 gate(s))
+test_gates mutation: nothing that the 2 gate(s) depend on changed since the last run: their results are reused, and a Timeout is measured again
 test_gates mutation: OK (mutants 69 / detected 65 (timeout 0) / allowed equivalent 2 / not evaluable 2 / unallowed survivors 0)
 test_gates all: OK (check, test, timezones, mutation)
 ```
@@ -1030,7 +1050,7 @@ Limits of `mutation`:
 
 - **Only the test of the gate is run.** A decision that is checked in another test file survives. Move the cases into the test of the gate; `check` asks for exactly one test per gate for the same reason.
 - **A mutant that does not compile is not a detection and not a failure.** A gate whose mutants all fail to compile passes; the `not evaluable` number in the summary is where to look.
-- **Results of the last run do not see what the gate imports** (see [Results of the last run](#results-of-the-last-run-and---force)). Use `--force` where it counts.
+- **Results of the last run see what the imports name, not more** (see [Results of the last run](#results-of-the-last-run-and---force)). Not seen: a file that a test reads in another way than the ones listed there (through another package, an asset loaded by a widget); the files of a `path:` dependency or of another member of a workspace (the lock file, of the package or of the root of its workspace, is compared, and it does not change when they do); a Flutter other than the one `flutter` on `PATH` names (the test command behind a second `--`, such as `fvm flutter test`, is compared as an option, not by its version); a file that git ignores and a test reads. Use `--force` where it counts; CI runs every mutant anyway.
 - **The mutators that use types often make a mutant that nothing can observe**: a number that only has to be large enough, `round` → `ceil` on a value that is whole anyway, `first` ↔ `last` on a list of one. Such a survivor is a question about the test first; when the answer is that no input can tell the two apart, it is allowed with that reason.
 - **Logging is mutated like everything else.** A removed `log('fee capped');` survives unless a test reads the log; allow it with a reason.
 - **`mutation` needs a newer Dart than the other commands**: `dart_mutant` runs on Dart 3.11 or later. `check`, `lcov`, `test`, `selfcheck`, `timezones` and `mutation-result` run on 3.9, and so does `all --no-mutation`.
@@ -1086,7 +1106,7 @@ What else changed: the lines per gate are printed by `dart_mutant`; the gates ar
 | The mutation tool | a development dependency of the project (`@stryker-mutator/core`), with a configuration file (`stryker.gates.config.mjs`) | a program of its own, which `mutation` fetches from pub.dev, given a plan that `mutation` makes from `test-gates.json`; no configuration file |
 | Arguments `mutation` does not know | handed to Stryker | what follows `--` is handed to `dart_mutant run` |
 | Report file | `settings.stryker.reportFile` | the same key |
-| Results of the last run | Stryker's incremental file | those of `dart_mutant` (`.dart_tool/dart_mutant/incremental.json`); `--force` runs everything |
+| Results of the last run | Stryker's incremental file; with `--affected`, per gate by what the gate and its specs import | per gate by what the gate and its tests import, always (`.dart_tool/test_gates/mutation-record.json`); `--force` and `CI` run everything |
 | Safe defaults | 0.3.3 (`mutation.maxTimeouts: 0`, no overall threshold) | the same |
 
 `npx test-gates lcov` works on a Dart package too, and checks lines only. Use this package when the repository has no Node.js, or when branches should count.
@@ -1113,7 +1133,7 @@ dart run test_gates check             # no test is run
 dart run test_gates test --selfcheck  # the whole test suite with coverage, once, with a probe in every gate
                                       # (or the two apart: test, then selfcheck)
 dart run test_gates timezones         # the test of zones.dart, the one gate that names DateTime, in two zones
-dart run test_gates mutation          # only the gates that changed since the last run
+dart run test_gates mutation          # only the gates whose files changed since the last run
 dart run test_gates mutation --gate lib/src/lcov.dart   # one gate, while working on it
 dart run test_gates mutation --force  # everything, before a release
 dart run test_gates all --selfcheck   # check, test --selfcheck, timezones and mutation in one start
