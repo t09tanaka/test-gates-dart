@@ -858,11 +858,11 @@ A mutant that does not compile costs next to nothing. One that compiles costs on
 | Package                                    | Gates | Mutants                           | Test runs at a time (on a machine with 12 logical processors) |
 | ------------------------------------------ | ----- | --------------------------------- | ------------------- |
 | [`example/`](example)                      | 2     | 69, of which 2 do not compile     | 1, in place, a start of the test runner for each (it has a `path:` dependency) |
-| This package, its own gates                | 15    | 2841, of which 274 do not compile | 3, in working copies (the default there) |
+| This package, its own gates                | 16    | 3162, of which 336 do not compile | 3, in working copies (the default there) |
 
-In `example/` a full run is 67 test runs, one at a time. For this package 2567 mutants are run, three at a time on that machine, most of them by a process of their own: the mutants are built into 13 of the 15 gates; in its workflow every gate is a job of its own ([`--gate`](#one-gate-at-a-time---gate)).
+In `example/` a full run is 67 test runs, one at a time. For this package 2826 mutants are run, three at a time on that machine, most of them by a process of their own: the mutants are built into 14 of the 16 gates; in its workflow every gate is a job of its own ([`--gate`](#one-gate-at-a-time---gate)).
 
-Of the 2841 mutants of this package 2559 are killed, 4 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
+Of the 3162 mutants of this package 2816 are killed, 6 time out (they are in `expectedTimeouts`) and 4 survive and are allowed as equivalent ([Development](#the-gates-of-this-package)).
 
 ## `test_gates mutation-result [--report <path>]`
 
