@@ -956,7 +956,7 @@ void main() {
       ]);
     });
 
-    test('--force --gate with a report that was not checked keeps no '
+    test('--force --gate after a report that is not the recorded one keeps no '
         'result of the other gates for the next run', () async {
       expect(await mutation(), 0);
       // The report changes behind the record (another run, a hand edit):

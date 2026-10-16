@@ -393,10 +393,11 @@ List<String> timedOutGates(String? report, List<String> gates) {
 /// The record a run leaves: the gates of [ran] whose results are in the
 /// report now ([written]), and those of the [last] record that the run did
 /// not touch, when it ran in the same [context] and the report was checked
-/// against that record before the run ([reportVerified]). Without that check
-/// (`--force`, `CI`, a problem, a report that is not the one the record
-/// names) what the report says about the other gates is not known to be what
-/// the record says, and they are left out.
+/// against that record before the run ([reportVerified]; this is checked
+/// with `--force` and `CI` as well). Without it (no record, another
+/// context, a report that is not the one the record names) what the report
+/// says about the other gates is not known to be what the record says, and
+/// they are left out.
 String recordAfterRun({
   required String? last,
   required bool reportVerified,

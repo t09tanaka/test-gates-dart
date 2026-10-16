@@ -659,7 +659,7 @@ void main() {
 
     test(
       'a report that was not checked against the record before the run '
-      '(--force, CI, a problem, another report): only the gates of the run',
+      '(another report or context, no record): only the gates of the run',
       () {
         final record = recordAfterRun(
           reportVerified: false,

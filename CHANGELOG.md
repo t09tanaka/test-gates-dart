@@ -16,9 +16,11 @@ depends on, and no longer leaves that to `dart_mutant`.
   a file the gate imports.
 - **Every mutant of every gate is run** when one of `pubspec.yaml`,
   `pubspec.lock`, `pubspec_overrides.yaml`, `analysis_options.yaml`,
-  `dart_test.yaml`, `build.yaml`, `test-gates.json`, the version of the Dart
-  SDK, of `test_gates` or of `dart_mutant`, the options after `--` or
-  `--report` changed; when what a gate depends on cannot be told from its
+  `dart_test.yaml`, `build.yaml`, `test-gates.json`, the `pubspec.yaml` and
+  `pubspec.lock` of the root of the workspace of a workspace member, the
+  version of the Dart SDK, the version of Flutter for a Flutter package
+  (`flutter --version --machine`), of `test_gates` or of `dart_mutant`, the
+  options after `--` or `--report` changed; when what a gate depends on cannot be told from its
   imports; when there is no record of a run, or the report is not the one
   it left; with `--force`; for a part of a run (`--shard`); and **when the
   environment variable `CI` is set**. The first line of `mutation` says
@@ -31,6 +33,10 @@ depends on, and no longer leaves that to `dart_mutant`.
   run runs again as well, so that the `Timeout` is measured again. When
   nothing changed, `dart_mutant` is started as before and measures only the
   timeouts again.
+- A run records the results of the gates it did not run (with `--gate`)
+  only when the report it started from is the one the record names, in the
+  same context; otherwise (with `--force` or `CI` too) it records only the
+  gates it ran.
 - The record is `.dart_tool/test_gates/mutation-record.json`. The first run
   after the upgrade runs every mutant.
 
