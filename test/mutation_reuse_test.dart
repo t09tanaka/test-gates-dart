@@ -78,6 +78,19 @@ List<String> rerunOf(ReusePlan plan) => [
 ];
 
 void main() {
+  test('where the record is, and the files that may affect every gate', () {
+    expect(recordFile, '.dart_tool/test_gates/mutation-record.json');
+    expect(configFiles, [
+      'pubspec.yaml',
+      'pubspec.lock',
+      'pubspec_overrides.yaml',
+      'analysis_options.yaml',
+      'dart_test.yaml',
+      'build.yaml',
+      'test-gates.json',
+    ]);
+  });
+
   group('reachOf', () {
     test('follows imports, exports and parts inside the package, through '
         'relative URIs and package:<name>/, however many imports away', () {
@@ -168,6 +181,14 @@ void main() {
       );
     });
 
+    test('of two URIs that are not written out, the first is given', () {
+      final found = reach(
+        ['lib/a.dart'],
+        {'lib/a.dart': "import 'DART:io';\nimport 'DART:async';\n"},
+      );
+      expect(found.problem, startsWith('lib/a.dart:1: '));
+    });
+
     test('the first problem is the one that is given', () {
       final found = reach(
         ['lib/a.dart'],
@@ -205,6 +226,8 @@ void main() {
         },
       );
       final text = encodeRecord(record);
+      // Indented, for a person who looks at it.
+      expect(text, startsWith('{\n  "version": 1,\n'));
       expect(jsonDecode(text), {
         'version': 1,
         'context': {'k': 'v'},
@@ -370,6 +393,37 @@ void main() {
         plan(now, recordText: recordOf(before)).full,
         'changed since the last run: build.yaml, dart_test.yaml, pubspec.lock, '
         'and 2 more',
+      );
+      // Three and four.
+      final three = {
+        ...before,
+        'a': 'x',
+        'pubspec.lock': 'b',
+        'build.yaml': 'd',
+      };
+      expect(
+        planReuse(
+          forced: null,
+          problem: null,
+          recordText: recordOf(before),
+          context: {...contextOf(three), 'a': 'x'},
+          report: 'r1',
+          timedOut: const [],
+          gates: statesOf(three),
+        ).full,
+        'changed since the last run: a, build.yaml, pubspec.lock',
+      );
+      expect(
+        planReuse(
+          forced: null,
+          problem: null,
+          recordText: recordOf(before),
+          context: {...contextOf(three), 'a': 'x', 'b': 'y'},
+          report: 'r1',
+          timedOut: const [],
+          gates: statesOf(three),
+        ).full,
+        'changed since the last run: a, b, build.yaml, and 1 more',
       );
     });
 
@@ -646,7 +700,16 @@ void main() {
         '  b: wb',
         '  c: wc',
       ]);
-      expect(describeReuse(ReusePlan.partly(rerun, const [])).length, 4);
+      // Five by default.
+      final six = [
+        for (final name in ['a', 'b', 'c', 'd', 'e', 'f'])
+          (gate: name, why: 'w'),
+      ];
+      expect(describeReuse(ReusePlan.partly(six, const [])), [
+        '0 of 6 gate(s) reused, 6 run again with every mutant',
+        for (final name in ['a', 'b', 'c', 'd', 'e']) '  $name: w',
+        '  and 1 more',
+      ]);
     });
   });
 }

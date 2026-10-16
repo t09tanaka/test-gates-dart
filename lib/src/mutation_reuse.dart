@@ -163,13 +163,7 @@ String encodeRecord(MutationRecord record) =>
 /// The record in [text], or `null` when it is not one that this version
 /// wrote.
 MutationRecord? decodeRecord(String text) {
-  final Object? decoded;
-  try {
-    decoded = jsonDecode(text);
-  } on FormatException {
-    return null;
-  }
-  final object = asObject(decoded);
+  final object = _decodeObject(text);
   final context = _strings(object?['context']);
   final report = asText(object?['report']);
   final entries = asObject(object?['gates']);
@@ -304,15 +298,20 @@ ReusePlan planReuse({
   return ReusePlan.partly(rerun, reused);
 }
 
+JsonObject? _decodeObject(String? text) {
+  if (text == null) {
+    return null;
+  }
+  try {
+    return asObject(jsonDecode(text));
+  } on FormatException {
+    return null;
+  }
+}
+
 /// The gates of [gates] with a mutant that timed out in [report].
 List<String> timedOutGates(String? report, List<String> gates) {
-  Object? decoded;
-  try {
-    decoded = jsonDecode(report ?? '{}');
-  } on FormatException {
-    decoded = null;
-  }
-  final files = asObject(asObject(decoded)?['files']) ?? const {};
+  final files = asObject(_decodeObject(report)?['files']) ?? const {};
   final timed = {
     for (final MapEntry(key: path, :value) in files.entries)
       if (asObject(value)?['mutants'] case final List<Object?> mutants
