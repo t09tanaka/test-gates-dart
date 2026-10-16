@@ -776,6 +776,14 @@ void main() {
           flutterVersionOf('Some banner\n$machine\n', null),
           'Flutter 3.47.2 (abc), engine def, Dart 3.13.2',
         );
+        // An object in the object: the first brace is the start.
+        expect(
+          flutterVersionOf(
+            '{"frameworkVersion": "3.47.2", "devTools": {"v": "2"}}',
+            null,
+          ),
+          'Flutter 3.47.2 (?), engine ?, Dart ?',
+        );
         expect(
           flutterVersionOf('{"frameworkVersion": "3.47.2"}', null),
           'Flutter 3.47.2 (?), engine ?, Dart ?',
