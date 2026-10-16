@@ -1098,8 +1098,13 @@ void main(List<String> arguments) {
 
   // A package below the fixture, next to another one it imports: at a path,
   // or as another member of a pub workspace.
-  for (final workspace in [false, true]) {
-    test('another package ${workspace ? 'of the workspace' : 'at a path'}: a '
+  for (final (workspace, link) in [
+    (false, false),
+    (true, false),
+    (true, true),
+  ]) {
+    test('another package ${workspace ? 'of the workspace' : 'at a path'}'
+        '${link ? ', the package named by a link' : ''}: a '
         'change of a file of it that a gate imports runs the gate again, and '
         'without package_config.json every mutant is run', () async {
       const member = 'packages/app';
@@ -1184,10 +1189,16 @@ ${workspace ? '' : '''
       for (final name in ['fake_dart_mutant.dart', 'fake_fetch.dart']) {
         package.file(name).copySync('$dir/$name');
       }
+      // A link somewhere else that points at the package: `..` of the link
+      // is not the directory above the package.
+      final named = link ? '${package.dir.path}/elsewhere/app' : dir;
+      if (link) {
+        Link(named).createSync(dir, recursive: true);
+      }
       Future<int> run() {
         package.out.clear();
         return runMutation(
-          dir,
+          named,
           null,
           const [],
           package.io,

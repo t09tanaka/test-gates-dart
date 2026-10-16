@@ -104,13 +104,18 @@ ReuseInputs readReuseInputs(
   required String? reportText,
   List<String>? flutter,
 }) {
+  // The files are read from the package as it is on disk: a path outside
+  // it (`../core/lib/c.dart`) is relative to that directory, not to a link
+  // that points at it.
+  final resolution = _resolution(dir);
+  final package = resolution.package;
   final sources = <String, String?>{};
   String? readSource(String path) => sources.putIfAbsent(path, () {
-    if (!_exists(dir, path)) {
+    if (!_exists(package, path)) {
       return null;
     }
     try {
-      return readText(_inPackage(dir, path));
+      return readText(_inPackage(package, path));
     } on FileSystemException {
       return null;
     }
@@ -118,7 +123,7 @@ ReuseInputs readReuseInputs(
   final fingerprints = <String, String>{};
   String fingerprintIn(String path) => fingerprints.putIfAbsent(
     path,
-    () => _fingerprintOf(_inPackage(dir, path)) ?? 'missing',
+    () => _fingerprintOf(_inPackage(package, path)) ?? 'missing',
   );
 
   String? everything;
@@ -145,7 +150,6 @@ ReuseInputs readReuseInputs(
     return everything;
   }
 
-  final resolution = _resolution(dir);
   final packages = resolution.root == null
       ? (roots: const <String, String?>{}, problem: resolution.why)
       : packageRootsOf(
