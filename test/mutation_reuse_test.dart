@@ -785,8 +785,67 @@ sdks:
       };
       expect(rerunOf(plan(now, recordText: recordOf(before))), [
         'lib/total.dart: changed test/total_test.dart',
-        'lib/tax.dart: changed lib/tax.dart, lib/unused.dart',
+        'lib/tax.dart: changed lib/tax.dart; not in the last record (new to '
+            'the comparison): lib/unused.dart',
       ]);
+    });
+
+    test('files that the record does not have are named apart from the '
+        'files that changed, at most three of each', () {
+      final files = package();
+      GateState without(GateState gate, List<String> paths) =>
+          GateState(gate.path, {
+            for (final MapEntry(:key, :value) in gate.files.entries)
+              if (!paths.contains(key)) key: value,
+          });
+      final extra = {
+        'lib/total.dart':
+            "import 'package:app/fee.dart';\nimport 'a.dart';\n"
+            "import 'b.dart';\nimport 'c.dart';\nimport 'd.dart';\n"
+            'int total(int x) => x + fee(x);\n',
+        'lib/a.dart': '',
+        'lib/b.dart': '',
+        'lib/c.dart': '',
+        'lib/d.dart': '',
+      };
+      final more = {...files, ...extra};
+      final states = statesOf(more);
+      final fresh = ['lib/a.dart', 'lib/b.dart', 'lib/c.dart', 'lib/d.dart'];
+      // The record of a version that compared fewer files.
+      String record({String? fee}) => recordAfterRun(
+        reportVerified: true,
+        last: null,
+        context: contextOf(more),
+        report: 'r1',
+        ran: [
+          for (final gate in states)
+            without(
+              fee != null && gate.path == 'lib/total.dart'
+                  ? GateState(gate.path, {...gate.files, 'lib/fee.dart': fee})
+                  : gate,
+              [...fresh, 'lib/total.dart'],
+            ),
+        ],
+        written: gates.keys.toList(),
+      );
+      expect(rerunOf(plan(more, recordText: record(), states: states)), [
+        'lib/total.dart: not in the last record (new to the comparison): '
+            'lib/a.dart, lib/b.dart, lib/c.dart, and 2 more',
+      ]);
+      expect(
+        rerunOf(
+          plan(
+            more,
+            recordText: record(fee: 'old'),
+            states: states,
+          ),
+        ),
+        [
+          'lib/total.dart: changed lib/fee.dart; not in the last record (new '
+              'to the comparison): lib/a.dart, lib/b.dart, lib/c.dart, and 2 '
+              'more',
+        ],
+      );
     });
 
     test('a gate whose tests can read files runs again when any file of the '

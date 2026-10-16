@@ -486,10 +486,26 @@ ReusePlan planReuse({
     final files = last == null
         ? const <String>[]
         : _differing(last.files, gate.files);
+    // A file that the record does not have did not change: it was not
+    // compared before (a new import, or a version that compared fewer
+    // files). It is named apart from the files that changed.
+    final added = [
+      for (final path in files)
+        if (!last!.files.containsKey(path)) path,
+    ];
+    final changed = [
+      for (final path in files)
+        if (!added.contains(path)) path,
+    ];
     final why = last == null
         ? 'the last run left no result of it'
         : files.isNotEmpty
-        ? 'changed ${_listed(files)}'
+        ? [
+            if (changed.isNotEmpty) 'changed ${_listed(changed)}',
+            if (added.isNotEmpty)
+              'not in the last record (new to the comparison): '
+                  '${_listed(added)}',
+          ].join('; ')
         : gate.readsFiles && gate.everything == null
         ? 'its tests can read any file, and the files of the package cannot '
               'be listed'

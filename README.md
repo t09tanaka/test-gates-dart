@@ -724,6 +724,8 @@ test_gates mutation: 1 of 2 gate(s) reused, 1 run again with every mutant
 
 (That is `example/` after a change of `lib/bulk_discount.dart`. A change of a file it imported, or of a helper of its test, would be named in the same way.)
 
+A file that the record does not have (a new import, or a file that an earlier version did not compare) did not change, and is named apart: `not in the last record (new to the comparison): …`. After an update from 0.3.0, which did not compare the files of other packages, the first run runs each gate that reaches a package at a path or another member of the workspace again once.
+
 - **A gate that runs again runs with every mutant.** It is given to `dart_mutant` with `--force --only <path>`: the results that tool keeps per file (`.dart_tool/dart_mutant/incremental.json`), which only look at the file, its tests, the test command and the tool, are not used for it. The other gates keep their results in the report.
 - **When nothing changed, nothing is run again**, apart from the mutants that timed out: `dart_mutant` measures a `Timeout` again every time. When some gates run again, a gate with a mutant that timed out in the last run is one of them, so that its `Timeout` is measured again as well.
 - **A file that no gate reaches changes nothing**, with one exception: a gate whose tests, or the files they reach (a helper in another package at a path included), can read a file that no import names (a fixture, a golden file, an asset). Such a gate runs again when any file of the package that git lists (tracked, or untracked and not ignored) changed. Outside a git work tree the files cannot be listed, and it runs again every time. A file can read files when it
