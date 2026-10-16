@@ -70,8 +70,11 @@ List<String> workspaceFiles(int levels) {
 /// `flutter --version` ([plain]), else that it cannot be told. A value that
 /// cannot be told is compared like any other.
 String flutterVersionOf(String? machine, String? plain) {
-  final start = machine?.indexOf('{') ?? -1;
-  final object = start < 0 ? null : _decodeObject(machine!.substring(start));
+  // Flutter can print a line about an upgrade in front of the object.
+  final start = machine?.indexOf('{');
+  final object = start == null || start < 0
+      ? null
+      : _decodeObject(machine!.substring(start));
   if (object != null) {
     String field(String name) => asText(object[name]) ?? '?';
     return 'Flutter ${field('frameworkVersion')} '
