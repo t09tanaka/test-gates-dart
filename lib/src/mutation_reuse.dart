@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'dart_source.dart';
 import 'import_policy.dart';
@@ -197,12 +198,9 @@ Uri _directory(Uri uri) => uri.replace(path: '${uri.path}/');
 String _relative(Uri from, Uri to) {
   final start = from.pathSegments.where((part) => part.isNotEmpty).toList();
   final end = to.pathSegments.where((part) => part.isNotEmpty).toList();
-  var common = 0;
-  while (common < start.length &&
-      common < end.length &&
-      start[common] == end[common]) {
-    common++;
-  }
+  final common = Iterable<int>.generate(
+    math.min(start.length, end.length),
+  ).takeWhile((index) => start[index] == end[index]).length;
   return [
     ...List.filled(start.length - common, '..'),
     ...end.skip(common),

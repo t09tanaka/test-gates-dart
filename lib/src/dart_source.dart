@@ -12,8 +12,8 @@ class ImportRef {
     required this.kind,
     required this.uri,
     required this.line,
+    required this.conditional,
     this.shown,
-    this.conditional = false,
   });
 
   final DirectiveKind kind;
