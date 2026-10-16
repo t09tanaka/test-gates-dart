@@ -1096,6 +1096,154 @@ void main(List<String> arguments) {
     );
   }
 
+  // A package below the fixture, next to another one it imports: at a path,
+  // or as another member of a pub workspace.
+  for (final workspace in [false, true]) {
+    test('another package ${workspace ? 'of the workspace' : 'at a path'}: a '
+        'change of a file of it that a gate imports runs the gate again, and '
+        'without package_config.json every mutant is run', () async {
+      const member = 'packages/app';
+      final dir = '${package.dir.path}/$member';
+      // Where pub writes the lock file and package_config.json.
+      final resolved = workspace ? '' : '$member/';
+      if (workspace) {
+        package.write(
+          'pubspec.yaml',
+          'name: root\nworkspace:\n  - packages/app\n  - packages/core\n',
+        );
+        package.write(
+          '$member/pubspec.yaml',
+          'name: app\nresolution: workspace\n',
+        );
+        package.write(
+          'packages/core/pubspec.yaml',
+          'name: core\nresolution: workspace\n',
+        );
+      } else {
+        package.write(
+          '$member/pubspec.yaml',
+          'name: app\ndependencies:\n  core:\n    path: ../core\n',
+        );
+      }
+      package.write('${resolved}pubspec.lock', '''
+packages:
+${workspace ? '' : '''
+  core:
+    dependency: "direct main"
+    description:
+      path: "../core"
+      relative: true
+    source: path
+    version: "0.0.0"
+'''}
+  hosted:
+    dependency: "direct main"
+    description:
+      name: hosted
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.0"
+''');
+      package.write(
+        '$resolved.dart_tool/package_config.json',
+        jsonEncode({
+          'configVersion': 2,
+          'packages': [
+            {
+              'name': 'app',
+              'rootUri': workspace ? '../packages/app' : '../',
+              'packageUri': 'lib/',
+            },
+            {
+              'name': 'core',
+              'rootUri': workspace ? '../packages/core' : '../../core',
+              'packageUri': 'lib/',
+            },
+            {
+              'name': 'hosted',
+              'rootUri': 'file:///nowhere/hosted-1.0.0',
+              'packageUri': 'lib/',
+            },
+          ],
+        }),
+      );
+      package.write('packages/core/lib/c.dart', "import 'src/d.dart';\n");
+      package.write('packages/core/lib/src/d.dart', 'int d() => 1;\n');
+      const importing =
+          "${sourceA}import 'package:core/c.dart';\n"
+          "import 'package:hosted/h.dart';\n";
+      package.write('$member/lib/a.dart', importing);
+      package.write('$member/lib/b.dart', sourceB);
+      package.write('$member/lib/a_test.dart', '');
+      package.write('$member/test/b_test.dart', '');
+      package.write('$member/test-gates.json', package.read('test-gates.json'));
+      final report =
+          jsonDecode(jsonEncode(everythingKilled)) as Map<String, Object?>;
+      ((report['files'] as Map)['lib/a.dart'] as Map)['source'] = importing;
+      package.write('$member/fake.json', jsonEncode({'report': report}));
+      for (final name in ['fake_dart_mutant.dart', 'fake_fetch.dart']) {
+        package.file(name).copySync('$dir/$name');
+      }
+      Future<int> run() {
+        package.out.clear();
+        return runMutation(
+          dir,
+          null,
+          const [],
+          package.io,
+          candidates: [fake],
+          ci: false,
+        );
+      }
+
+      expect(await run(), 0, reason: package.err.join('\n'));
+      expect(await run(), 0);
+      expect(
+        package.out.first,
+        startsWith('test_gates mutation: nothing that'),
+      );
+      package.write('packages/core/lib/src/d.dart', 'int d() => 2;\n');
+      expect(await run(), 0);
+      expect(package.out.take(2), [
+        'test_gates mutation: 1 of 2 gate(s) reused, 1 run again with every '
+            'mutant',
+        '  lib/a.dart: changed ../core/lib/src/d.dart',
+      ]);
+      package.file('$resolved.dart_tool/package_config.json').deleteSync();
+      expect(await run(), 0);
+      expect(
+        package.out.first,
+        'test_gates mutation: running every mutant of the gates (--force): '
+        'what a gate depends on cannot be told from the imports: '
+        'lib/a.dart:2: "package:core/c.dart" cannot be followed: there is no '
+        '.dart_tool/package_config.json (run dart pub get)',
+      );
+    });
+  }
+
+  test('a conditional import of a file that is not there: the gate keeps its '
+      'results, and runs again when the file is added', () async {
+    tool({'report': everythingKilled});
+    package.write('pubspec.lock', 'packages: {}\n');
+    package.write(
+      'test/b_test.dart',
+      "import '../lib/h.dart' if (dart.library.html) '../lib/h_web.dart';\n",
+    );
+    package.write('lib/h.dart', '');
+    expect(await mutation(), 0);
+    package.out.clear();
+    expect(await mutation(), 0);
+    expect(package.out.first, startsWith('test_gates mutation: nothing that'));
+    package.write('lib/h_web.dart', 'int h() => 1;\n');
+    package.out.clear();
+    expect(await mutation(), 0);
+    expect(package.out.take(2), [
+      'test_gates mutation: 1 of 2 gate(s) reused, 1 run again with every '
+          'mutant',
+      '  lib/b.dart: changed lib/h_web.dart',
+    ]);
+  });
+
   group('--gate', () {
     test('the gate is named with --only, the plan has only that gate, and '
         'only that gate is judged', () async {

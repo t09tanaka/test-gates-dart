@@ -25,6 +25,17 @@ String fingerprint(List<int> bytes) {
   return '${bytes.length}:${hash.toUnsigned(64).toRadixString(16)}';
 }
 
+/// True when [relativePath] is a file of that spelling, from the package in
+/// [dir] (see [existsExact]); a path outside it starts with `../`.
+bool _exists(String dir, String relativePath) {
+  final segments = relativePath.split('/');
+  final up = segments.takeWhile((segment) => segment == '..').length;
+  return existsExact(
+    [dir, ...List.filled(up, '..')].join(Platform.pathSeparator),
+    segments.skip(up).join('/'),
+  );
+}
+
 String? _fingerprintOf(String path) {
   try {
     return fingerprint(File(path).readAsBytesSync());
@@ -95,7 +106,7 @@ ReuseInputs readReuseInputs(
 }) {
   final sources = <String, String?>{};
   String? readSource(String path) => sources.putIfAbsent(path, () {
-    if (!existsExact(dir, path)) {
+    if (!_exists(dir, path)) {
       return null;
     }
     try {
@@ -134,6 +145,23 @@ ReuseInputs readReuseInputs(
     return everything;
   }
 
+  final resolution = _resolution(dir);
+  final packages = resolution.root == null
+      ? (roots: const <String, String?>{}, problem: resolution.why)
+      : packageRootsOf(
+          config: _readOrNull(
+            '${resolution.root}${Platform.pathSeparator}.dart_tool'
+            '${Platform.pathSeparator}package_config.json',
+          ),
+          lock: _readOrNull(
+            '${resolution.root}${Platform.pathSeparator}pubspec.lock',
+          ),
+          configFile: Uri.directory(
+            resolution.root!,
+          ).resolve('.dart_tool/package_config.json'),
+          package: Uri.directory(resolution.package),
+        );
+
   String? problem;
   final gates = <GateState>[];
   for (final target in targets) {
@@ -146,6 +174,7 @@ ReuseInputs readReuseInputs(
       [target.file, ...target.tests, ...configs],
       aliases,
       readSource,
+      packages: packages,
     );
     problem ??= reach.problem;
     gates.add(
@@ -172,7 +201,7 @@ ReuseInputs readReuseInputs(
       'the options after --': jsonEncode(rest),
       '--report': reportFile,
       for (final file in configFiles) file: fingerprintIn(file),
-      ..._packageContext(dir, flutter ?? const ['flutter']),
+      ..._packageContext(dir, resolution, flutter ?? const ['flutter']),
     },
     gates: gates,
     problem: problem,
@@ -200,47 +229,93 @@ String? _outputOf(List<String> command, List<String> arguments, String dir) {
   }
 }
 
-/// What the pubspec of the package in [dir] adds to the context: for a
-/// member of a pub workspace, the pubspec and the lock file of the root
-/// (found by going up to the pubspec with `workspace:`); for a Flutter
-/// package, the version of Flutter that [flutter] reports.
-Map<String, String> _packageContext(String dir, List<String> flutter) {
-  final String pubspec;
+String? _readOrNull(String path) {
   try {
-    pubspec = readText(_inPackage(dir, 'pubspec.yaml'));
+    return readText(path);
   } on FileSystemException {
+    return null;
+  }
+}
+
+/// Where the dependencies of the package in [dir] are resolved.
+///
+/// [package]: the package as a path on disk. [pubspec]: its pubspec, `null`
+/// when it cannot be read. [root]: the directory of the lock file and of
+/// `.dart_tool/package_config.json`, the package itself, or for a member of
+/// a pub workspace the root of the workspace [levels] directories above it
+/// (found by going up to the pubspec with `workspace:`), `null` when there
+/// is none ([why]).
+typedef _Resolution = ({
+  String package,
+  String? pubspec,
+  String? root,
+  int levels,
+  String? why,
+});
+
+_Resolution _resolution(String dir) {
+  // The path as it is on disk: `--dir .` (the default) or `packages/app/.`
+  // would otherwise start the way up one directory too low.
+  final package = Directory(dir).resolveSymbolicLinksSync();
+  final pubspec = _readOrNull(_inPackage(package, 'pubspec.yaml'));
+  if (pubspec == null || !inWorkspace(pubspec)) {
+    return (
+      package: package,
+      pubspec: pubspec,
+      root: package,
+      levels: 0,
+      why: null,
+    );
+  }
+  var root = Directory(package).parent;
+  var levels = 1;
+  while (true) {
+    final text = _readOrNull(
+      '${root.path}${Platform.pathSeparator}pubspec.yaml',
+    );
+    if (text != null && isWorkspaceRoot(text)) {
+      return (
+        package: package,
+        pubspec: pubspec,
+        root: root.path,
+        levels: levels,
+        why: null,
+      );
+    }
+    if (root.parent.path == root.path) {
+      return (
+        package: package,
+        pubspec: pubspec,
+        root: null,
+        levels: levels,
+        why: 'the root of the workspace is not found',
+      );
+    }
+    root = root.parent;
+    levels++;
+  }
+}
+
+/// What the pubspec of the package adds to the context: for a member of a
+/// pub workspace, the pubspec and the lock file of the root; for a Flutter
+/// package, the version of Flutter that [flutter] reports.
+Map<String, String> _packageContext(
+  String dir,
+  _Resolution resolution,
+  List<String> flutter,
+) {
+  final pubspec = resolution.pubspec;
+  if (pubspec == null) {
     return const {};
   }
   final context = <String, String>{};
   if (inWorkspace(pubspec)) {
-    // The path as it is on disk: `--dir .` (the default) or `packages/app/.` would
-    // otherwise start the way up one directory too low.
-    final package = Directory(dir).resolveSymbolicLinksSync();
-    var root = Directory(package).parent;
-    var levels = 1;
-    String? found;
-    while (found == null) {
-      final file = File('${root.path}${Platform.pathSeparator}pubspec.yaml');
-      String? text;
-      try {
-        text = readText(file.path);
-      } on FileSystemException {
-        text = null;
-      }
-      if (text != null && isWorkspaceRoot(text)) {
-        found = root.path;
-      } else if (root.parent.path == root.path) {
-        break;
-      } else {
-        root = root.parent;
-        levels++;
-      }
-    }
-    if (found == null) {
+    if (resolution.root == null) {
       context['the root of the workspace'] = 'not found';
     } else {
-      for (final file in workspaceFiles(levels)) {
-        context[file] = _fingerprintOf(_inPackage(package, file)) ?? 'missing';
+      for (final file in workspaceFiles(resolution.levels)) {
+        context[file] =
+            _fingerprintOf(_inPackage(resolution.package, file)) ?? 'missing';
       }
     }
   }
