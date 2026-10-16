@@ -11,6 +11,8 @@ import 'package:test_gates/src/cli.dart';
 import 'package:test_gates/src/commands/output.dart';
 import 'package:test_gates/src/zones.dart';
 
+import '../package_root.dart';
+
 /// `timezones` against the real thing: `dart test` on a small package
 /// (test/fixtures/zones/package, kept as .txt and copied into a temporary
 /// directory) whose tests pass on a machine in UTC and decide by the zone of
@@ -33,7 +35,9 @@ void main() {
     ]) {
       File('${dir.path}/$to')
         ..createSync(recursive: true)
-        ..writeAsBytesSync(File('test/fixtures/$from.txt').readAsBytesSync());
+        ..writeAsBytesSync(
+          File(inPackage('test/fixtures/$from.txt')).readAsBytesSync(),
+        );
     }
     File('${dir.path}/test-gates.json').writeAsStringSync(
       jsonEncode({

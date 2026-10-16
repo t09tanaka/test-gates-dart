@@ -9,6 +9,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 
+import '../package_root.dart';
 import 'package_fixture.dart';
 
 /// `mutation` interrupted while the tool is at work. The tool is one that
@@ -21,7 +22,7 @@ void main() {
   setUp(() {
     package = PackageFixture();
     File(
-      'test/fixtures/mutation/fake_dart_mutant.dart.txt',
+      inPackage('test/fixtures/mutation/fake_dart_mutant.dart.txt'),
     ).copySync('${package.dir.path}/fake_dart_mutant.dart');
     package.write('lib/a.dart', 'int a(int x) => x + 1;\n');
     package.write('lib/a_test.dart', '');
@@ -43,7 +44,7 @@ void main() {
   Future<(Process, int)> start() async {
     final process = await Process.start(
       Platform.resolvedExecutable,
-      [File('bin/test_gates.dart').absolute.path, 'mutation', '--dir', '.'],
+      [inPackage('bin/test_gates.dart'), 'mutation', '--dir', '.'],
       workingDirectory: package.dir.path,
       environment: {
         'TEST_GATES_DART_MUTANT': '${package.dir.path}/bin/dart_mutant',
@@ -112,7 +113,7 @@ Future<void> main(List<String> arguments) async {
 }
 ''');
     final process = await Process.start(Platform.resolvedExecutable, [
-      '--packages=${File('.dart_tool/package_config.json').absolute.path}',
+      '--packages=${inPackage('.dart_tool/package_config.json')}',
       'short_grace.dart',
       '${package.dir.path}/bin/dart_mutant',
     ], workingDirectory: package.dir.path);
@@ -167,7 +168,7 @@ Future<void> main(List<String> arguments) async {
 }
 ''');
     final process = await Process.start(Platform.resolvedExecutable, [
-      '--packages=${File('.dart_tool/package_config.json').absolute.path}',
+      '--packages=${inPackage('.dart_tool/package_config.json')}',
       'wait_for_tool.dart',
       Platform.resolvedExecutable,
       '${package.dir.path}/fake_dart_mutant.dart',

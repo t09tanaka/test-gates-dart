@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:test_gates/src/lcov.dart';
 
+import 'package_root.dart';
+
 /// The fixtures are real output for `test/fixtures/lcov/probe.dart.txt`,
 /// measured with Flutter 3.47.2 / Dart 3.13.2:
 /// - `*_partial`: every function called with one input only,
@@ -10,7 +12,7 @@ import 'package:test_gates/src/lcov.dart';
 /// - `flutter_test_*`: `flutter test --coverage --branch-coverage`,
 /// - `dart_test_*`: `dart test --coverage-path=<file> --branch-coverage`.
 String fixture(String name) =>
-    File('test/fixtures/lcov/$name.info').readAsStringSync();
+    File(inPackage('test/fixtures/lcov/$name.info')).readAsStringSync();
 
 const probe = 'lib/probe.dart';
 

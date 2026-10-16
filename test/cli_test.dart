@@ -7,6 +7,8 @@ import 'package:test_gates/src/commands/output.dart';
 import 'package:test_gates/src/settings.dart';
 import 'package:test_gates/src/version.dart';
 
+import 'package_root.dart';
+
 void main() {
   late List<String> out;
   late List<String> err;
@@ -22,7 +24,7 @@ void main() {
     expect(cli(['--version']), 0);
     expect(out, [packageVersion]);
     expect(
-      File('pubspec.yaml').readAsLinesSync(),
+      File(inPackage('pubspec.yaml')).readAsLinesSync(),
       contains('version: $packageVersion'),
     );
   });
@@ -46,11 +48,11 @@ void main() {
   test('the executable sets the exit code', () {
     final result = Process.runSync(Platform.resolvedExecutable, [
       'run',
-      'bin/test_gates.dart',
+      inPackage('bin/test_gates.dart'),
       'lcov',
       '--dir',
-      'test/fixtures/manifest',
-    ]);
+      inPackage('test/fixtures/manifest'),
+    ], workingDirectory: packageRoot);
     expect(result.exitCode, 2);
     expect(result.stdout, isEmpty);
     expect(
@@ -60,16 +62,20 @@ void main() {
 
     final version = Process.runSync(Platform.resolvedExecutable, [
       'run',
-      'bin/test_gates.dart',
+      inPackage('bin/test_gates.dart'),
       '-v',
-    ]);
+    ], workingDirectory: packageRoot);
     expect(version.exitCode, 0);
     expect(version.stdout, '$packageVersion\n');
   });
 
   group('the bundled schema', () {
     final schema =
-        jsonDecode(File('schema/test-gates.schema.json').readAsStringSync())
+        jsonDecode(
+              File(
+                inPackage('schema/test-gates.schema.json'),
+              ).readAsStringSync(),
+            )
             as Map<String, Object?>;
     final definitions = schema['definitions']! as Map<String, Object?>;
     final settings = definitions['settings']! as Map<String, Object?>;

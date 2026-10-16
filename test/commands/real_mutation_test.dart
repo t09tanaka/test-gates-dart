@@ -9,6 +9,8 @@ import 'package:test_gates/src/cli.dart';
 import 'package:test_gates/src/commands/output.dart';
 import 'package:test_gates/src/mutation_run.dart';
 
+import '../package_root.dart';
+
 /// `mutation` against the real thing: `dart_mutant` as `mutation` fetches
 /// it from pub.dev, on a small package whose tests are run by `dart test`.
 /// The source is kept as .txt (test/fixtures/mutation/package) so that it
@@ -61,7 +63,9 @@ void main() {
     ]) {
       File('${dir.path}/$to')
         ..createSync(recursive: true)
-        ..writeAsBytesSync(File('test/fixtures/$from.txt').readAsBytesSync());
+        ..writeAsBytesSync(
+          File(inPackage('test/fixtures/$from.txt')).readAsBytesSync(),
+        );
     }
     manifest();
     // The packages are in the cache: this package depends on `test` too.

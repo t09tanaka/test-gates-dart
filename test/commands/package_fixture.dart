@@ -3,11 +3,13 @@ import 'dart:io';
 
 import 'package:test_gates/src/commands/output.dart';
 
+import '../package_root.dart';
+
 /// A package in a temporary directory, with what the commands print.
 class PackageFixture {
   PackageFixture() : dir = Directory.systemTemp.createTempSync('test_gates_') {
     File(
-      'test/fixtures/selfcheck/fake_coverage.dart.txt',
+      inPackage('test/fixtures/selfcheck/fake_coverage.dart.txt'),
     ).copySync('${dir.path}/fake_coverage.dart');
   }
 

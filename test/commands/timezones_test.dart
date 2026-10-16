@@ -7,6 +7,7 @@ import 'package:test/test.dart';
 import 'package:test_gates/src/cli.dart';
 import 'package:test_gates/src/commands/timezones.dart';
 
+import '../package_root.dart';
 import 'package_fixture.dart';
 
 void main() {
@@ -15,7 +16,7 @@ void main() {
   setUp(() {
     package = PackageFixture();
     File(
-      'test/fixtures/zones/fake_zone_test.dart.txt',
+      inPackage('test/fixtures/zones/fake_zone_test.dart.txt'),
     ).copySync('${package.dir.path}/fake_zone_test.dart');
     // The time zone database of the tests: these zones are known.
     for (final zone in ['Pacific/Kiritimati', 'Etc/GMT+12', 'UTC']) {

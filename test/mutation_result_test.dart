@@ -6,6 +6,8 @@ import 'package:test_gates/src/manifest.dart';
 import 'package:test_gates/src/mutation_result.dart';
 import 'package:test_gates/src/types.dart';
 
+import 'package_root.dart';
+
 // The cases of upstream's mutation-result.test.ts. The source is TypeScript
 // there and stays so here: the judge never reads the language.
 //
@@ -1220,7 +1222,7 @@ void main() {
     // test/commands/real_mutation_test.dart runs the tool that is installed
     // on the same package, and expects no numbers.
     final text = File(
-      'test/fixtures/mutation/dart_mutant_report.json',
+      inPackage('test/fixtures/mutation/dart_mutant_report.json'),
     ).readAsStringSync();
     const path = 'lib/steps.dart';
 
