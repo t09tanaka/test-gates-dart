@@ -4,8 +4,13 @@ import 'package:test_gates/src/import_policy.dart';
 import 'package:test_gates/src/settings.dart';
 import 'package:test_gates/src/types.dart';
 
-ImportRef ref(String uri, [List<String>? shown]) =>
-    ImportRef(kind: DirectiveKind.import, uri: uri, line: 1, shown: shown);
+ImportRef ref(String uri, [List<String>? shown]) => ImportRef(
+  kind: DirectiveKind.import,
+  uri: uri,
+  line: 1,
+  conditional: false,
+  shown: shown,
+);
 
 void main() {
   final own = aliasesFor('app', const []);

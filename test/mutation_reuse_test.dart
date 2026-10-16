@@ -6,8 +6,18 @@ import 'package:test_gates/src/types.dart';
 
 const aliases = [ImportAlias('package:app/', 'lib/')];
 
-Reach reach(List<String> starts, Map<String, String> files) =>
-    reachOf(starts, aliases, (path) => files[path]);
+/// Other packages as a package_config.json and a lock file give them: one
+/// at a path next to the package, the others from the pub cache.
+const PackageRoots roots = (
+  roots: {'other': '../other/lib/', 'test': null, 'hosted': null},
+  problem: null,
+);
+
+Reach reach(
+  List<String> starts,
+  Map<String, String> files, {
+  PackageRoots packages = roots,
+}) => reachOf(starts, aliases, (path) => files[path], packages: packages);
 
 /// A package: two gates, their tests, a helper of one test, a file one gate
 /// imports, and a file that nothing imports.
@@ -101,7 +111,8 @@ void main() {
         'lib/a.g.dart': "part of 'a.dart';\n",
         'lib/b.dart': "import 'd/e.dart';\n",
         'lib/c.dart': '',
-        'lib/d/e.dart': "import '../b.dart';\nimport 'package:other/x.dart';\n",
+        'lib/d/e.dart':
+            "import '../b.dart';\nimport 'package:hosted/x.dart';\n",
       };
       final found = reach(['lib/a.dart'], files);
       expect(found.files, [
@@ -131,6 +142,21 @@ void main() {
         "import 'package:test_descriptor/test_descriptor.dart';\n",
         'void f() => matchesGoldenFile;\n',
         'void f() => rootBundle;\n',
+        'void f(c) => DefaultAssetBundle.of(c);\n',
+        'void f() => AssetBundle;\n',
+        'void f() => PlatformAssetBundle();\n',
+        'void f() => CachingAssetBundle;\n',
+        "void f() => AssetImage('a.png');\n",
+        "void f() => ExactAssetImage('a.png');\n",
+        "void f() => Image.asset('a.png');\n",
+        "void f() => SvgPicture.asset('a.svg');\n",
+        "void f(b) => b.loadString('a.json');\n",
+        "void f(b) => b.loadStructuredData('a.json', p);\n",
+        "void f(t) => screenMatchesGolden(t, 'a');\n",
+        "void f(t) => multiScreenGolden(t, 'a');\n",
+        "void f() => testGoldens('a', (t) async {});\n",
+        'void f() => loadAppFonts();\n',
+        "void f() => goldenTest('a', fileName: 'a', builder: b);\n",
       ]) {
         final files = {
           'test/a_test.dart': "import 'helper.dart';\n",
@@ -142,6 +168,15 @@ void main() {
           reason: source,
         );
       }
+    });
+
+    test('a name like them does not', () {
+      final files = {
+        'test/a_test.dart':
+            'final asset = 1;\nfinal b = x.assets;\nfinal c = asset.length;\n'
+            "final d = Image.network('a');\nfinal e = loadStrings;\n",
+      };
+      expect(reach(['test/a_test.dart'], files).readsFiles, isFalse);
     });
 
     test('a file that names them in a string or a comment does not', () {
@@ -159,6 +194,118 @@ void main() {
       expect(found.problem, 'lib/b.dart cannot be read');
     });
 
+    test('a start that cannot be read is the problem', () {
+      expect(reach(['lib/a.dart'], {}).problem, 'lib/a.dart cannot be read');
+    });
+
+    test('a URI of a conditional import that is not there is a file that is '
+        'missing, not a problem: when it is added, it is a change', () {
+      final found = reach(
+        ['lib/a.dart'],
+        {
+          'lib/a.dart':
+              "import 'h.dart' if (dart.library.html) 'h_web.dart';\n",
+          'lib/h.dart': '',
+        },
+      );
+      expect(found.files, ['lib/a.dart', 'lib/h.dart', 'lib/h_web.dart']);
+      expect(found.problem, isNull);
+    });
+
+    test('a missing file that is also imported without a condition is the '
+        'problem, wherever that import is', () {
+      for (final files in [
+        {
+          'lib/a.dart':
+              "import 'h.dart' if (dart.library.html) 'h_web.dart';\n"
+              "import 'b.dart';\n",
+          'lib/h.dart': '',
+          'lib/b.dart': "import 'h_web.dart';\n",
+        },
+        {
+          'lib/a.dart':
+              "import 'h_web.dart';\n"
+              "import 'h.dart' if (dart.library.html) 'h_web.dart';\n",
+          'lib/h.dart': '',
+        },
+      ]) {
+        expect(
+          reach(['lib/a.dart'], files).problem,
+          'lib/h_web.dart cannot be read',
+        );
+      }
+    });
+
+    test('another package at a path, or a member of the workspace: its files '
+        'are followed like those of the package, outside it as well', () {
+      final found = reach(
+        ['lib/a.dart'],
+        {
+          'lib/a.dart': "import 'package:other/o.dart';\n",
+          '../other/lib/o.dart':
+              "import 'src/x.dart';\nexport 'package:other/y.dart';\n"
+              "import 'package:test/test.dart';\n",
+          '../other/lib/src/x.dart': "import '../../tool/z.dart';\n",
+          '../other/lib/y.dart': '',
+          '../other/tool/z.dart': "import 'dart:io';\n",
+        },
+      );
+      expect(found.files, [
+        '../other/lib/o.dart',
+        '../other/lib/src/x.dart',
+        '../other/lib/y.dart',
+        '../other/tool/z.dart',
+        'lib/a.dart',
+      ]);
+      expect(found.readsFiles, isTrue);
+      expect(found.problem, isNull);
+    });
+
+    test('a package that the lock file pins is not followed', () {
+      final found = reach(
+        ['test/a_test.dart'],
+        {
+          'test/a_test.dart':
+              "import 'package:test/test.dart';\nimport 'package:hosted/h.dart';\n",
+        },
+      );
+      expect(found.files, ['test/a_test.dart']);
+      expect(found.problem, isNull);
+    });
+
+    test('a package that package_config.json does not have is the '
+        'problem', () {
+      final found = reach(
+        ['lib/a.dart'],
+        {
+          'lib/a.dart':
+              "import 'dart:math';\n\nimport 'package:nope/n.dart';\n",
+        },
+      );
+      expect(found.files, ['lib/a.dart']);
+      expect(
+        found.problem,
+        'lib/a.dart:3: "package:nope/n.dart" is not a package of '
+        '.dart_tool/package_config.json',
+      );
+    });
+
+    test('when the packages cannot be told, an import of another package is '
+        'the problem, and only then', () {
+      const unknown = (roots: <String, String?>{}, problem: 'why');
+      final files = {
+        'lib/a.dart': "import 'package:app/b.dart';\nimport 'c.dart';\n",
+        'lib/b.dart': "import 'dart:io';\nimport '../test/h.dart';\n",
+        'test/h.dart': '',
+        'lib/c.dart': "\nexport 'package:other/o.dart';\n",
+      };
+      expect(reach(['lib/b.dart'], files, packages: unknown).problem, isNull);
+      expect(
+        reach(['lib/a.dart'], files, packages: unknown).problem,
+        'lib/c.dart:2: "package:other/o.dart" cannot be followed: why',
+      );
+    });
+
     test('a URI that is not written out as Dart reads it is the problem', () {
       final found = reach(
         ['lib/a.dart'],
@@ -170,16 +317,25 @@ void main() {
       );
     });
 
-    test('a URI outside the package is the problem, and is not followed', () {
-      final found = reach(
+    test('a URI outside the package is followed, through an alias as '
+        'well', () {
+      final found = reachOf(
         ['test/a_test.dart'],
-        {'test/a_test.dart': "\nimport '../../shared/x.dart';\n"},
+        [...aliases, const ImportAlias('package:shared/', '../shared/lib/')],
+        (path) => {
+          'test/a_test.dart':
+              "import '../../shared/x.dart';\nimport 'package:shared/s.dart';\n",
+          '../shared/x.dart': '',
+          '../shared/lib/s.dart': '',
+        }[path],
+        packages: roots,
       );
-      expect(found.files, ['test/a_test.dart']);
-      expect(
-        found.problem,
-        'test/a_test.dart:2: "../../shared/x.dart" is outside the package',
-      );
+      expect(found.files, [
+        '../shared/lib/s.dart',
+        '../shared/x.dart',
+        'test/a_test.dart',
+      ]);
+      expect(found.problem, isNull);
     });
 
     test('of two URIs that are not written out, the first is given', () {
@@ -195,10 +351,150 @@ void main() {
         ['lib/a.dart'],
         {
           'lib/a.dart':
-              "import 'DART:io';\nimport 'b.dart';\nimport '../../x.dart';\n",
+              "import 'DART:io';\nimport 'package:nope/n.dart';\n"
+              "import 'b.dart';\n",
         },
       );
       expect(found.problem, startsWith('lib/a.dart:1: '));
+    });
+  });
+
+  group('packageRootsOf', () {
+    String config(List<Map<String, Object?>> packages) =>
+        jsonEncode({'configVersion': 2, 'packages': packages});
+    Map<String, Object?> entry(String name, String root, [String? lib]) => {
+      'name': name,
+      'rootUri': root,
+      'packageUri': ?lib,
+    };
+    const lock = '''
+# Generated by pub
+packages:
+  at_path:
+    dependency: "direct main"
+    description:
+      path: "/elsewhere/at_path"
+      relative: false
+    source: path
+    version: "1.0.0"
+  flutter:
+    dependency: "direct main"
+    description: flutter
+    source: sdk
+    version: "0.0.0"
+  from_git:
+    dependency: "direct main"
+    description:
+      url: "https://example.com/g.git"
+    source: git
+    version: "1.0.0"
+  next:
+    dependency: "direct main"
+    description:
+      path: "../next"
+      relative: true
+    source: path
+    version: "1.0.0"
+  test:
+    dependency: "direct dev"
+    description:
+      name: test
+      url: "https://pub.dev"
+    source: "hosted"
+    version: "1.27.0"
+sdks:
+  dart: ">=3.9.0 <4.0.0"
+''';
+    final package = Uri.directory('/work/app/');
+    final file = Uri.file('/work/app/.dart_tool/package_config.json');
+
+    test('a package at a path, or not in the lock file (a member of the '
+        'workspace): where its lib/ is, from the package; one that the lock '
+        'file pins (hosted, git, sdk): null', () {
+      final found = packageRootsOf(
+        config: config([
+          entry('app', '../', 'lib/'),
+          entry('next', '../../next', 'lib/'),
+          entry('at_path', 'file:///elsewhere/at_path/', 'lib/'),
+          entry('member', '../packages/member', 'lib/'),
+          entry('inside', '../tools/inside', 'src/'),
+          entry('bare', '../../bare'),
+          entry('above', '../../'),
+          entry('test', 'file:///cache/hosted/pub.dev/test-1.27.0', 'lib/'),
+          entry('from_git', 'file:///cache/git/g-abc/', 'lib/'),
+          entry('flutter', 'file:///flutter/packages/flutter', 'lib/'),
+        ]),
+        lock: lock,
+        configFile: file,
+        package: package,
+      );
+      expect(found.problem, isNull);
+      expect(found.roots, {
+        'app': 'lib/',
+        'next': '../next/lib/',
+        'at_path': '../../elsewhere/at_path/lib/',
+        'member': 'packages/member/lib/',
+        'inside': 'tools/inside/src/',
+        'bare': '../bare/',
+        'above': '../',
+        'test': null,
+        'from_git': null,
+        'flutter': null,
+      });
+    });
+
+    test('the root of a workspace: from the member below it', () {
+      final found = packageRootsOf(
+        config: config([
+          entry('app', '../packages/app', 'lib/'),
+          entry('core', '../packages/core', 'lib/'),
+        ]),
+        lock: 'packages: {}\n',
+        configFile: Uri.file('/ws/.dart_tool/package_config.json'),
+        package: Uri.directory('/ws/packages/app/'),
+      );
+      expect(found.roots, {'app': 'lib/', 'core': '../core/lib/'});
+    });
+
+    test('what cannot be read is the problem, and no package is known', () {
+      for (final (text, locked, why) in [
+        (null, lock, 'there is no .dart_tool/package_config.json'),
+        ('{', lock, 'the .dart_tool/package_config.json cannot be read'),
+        (
+          '{"packages": {}}',
+          lock,
+          'the .dart_tool/package_config.json cannot be read',
+        ),
+        (
+          config([
+            {'name': 'a'},
+          ]),
+          lock,
+          'the .dart_tool/package_config.json cannot be read',
+        ),
+        (
+          config([
+            {'rootUri': '../'},
+          ]),
+          lock,
+          'the .dart_tool/package_config.json cannot be read',
+        ),
+        (
+          config([entry('a', '../', 'lib/'), entry('b', 'http://a/b/')]),
+          lock,
+          'b is not on the disk: http://a/b/',
+        ),
+        (config([entry('a', '../')]), null, 'there is no pubspec.lock'),
+      ]) {
+        final found = packageRootsOf(
+          config: text,
+          lock: locked,
+          configFile: file,
+          package: package,
+        );
+        expect(found.problem, '$why (run dart pub get)', reason: text);
+        expect(found.roots, isEmpty, reason: text);
+      }
     });
   });
 
@@ -489,8 +785,67 @@ void main() {
       };
       expect(rerunOf(plan(now, recordText: recordOf(before))), [
         'lib/total.dart: changed test/total_test.dart',
-        'lib/tax.dart: changed lib/tax.dart, lib/unused.dart',
+        'lib/tax.dart: changed lib/tax.dart; not in the last record (new to '
+            'the comparison): lib/unused.dart',
       ]);
+    });
+
+    test('files that the record does not have are named apart from the '
+        'files that changed, at most three of each', () {
+      final files = package();
+      GateState without(GateState gate, List<String> paths) =>
+          GateState(gate.path, {
+            for (final MapEntry(:key, :value) in gate.files.entries)
+              if (!paths.contains(key)) key: value,
+          });
+      final extra = {
+        'lib/total.dart':
+            "import 'package:app/fee.dart';\nimport 'a.dart';\n"
+            "import 'b.dart';\nimport 'c.dart';\nimport 'd.dart';\n"
+            'int total(int x) => x + fee(x);\n',
+        'lib/a.dart': '',
+        'lib/b.dart': '',
+        'lib/c.dart': '',
+        'lib/d.dart': '',
+      };
+      final more = {...files, ...extra};
+      final states = statesOf(more);
+      final fresh = ['lib/a.dart', 'lib/b.dart', 'lib/c.dart', 'lib/d.dart'];
+      // The record of a version that compared fewer files.
+      String record({String? fee}) => recordAfterRun(
+        reportVerified: true,
+        last: null,
+        context: contextOf(more),
+        report: 'r1',
+        ran: [
+          for (final gate in states)
+            without(
+              fee != null && gate.path == 'lib/total.dart'
+                  ? GateState(gate.path, {...gate.files, 'lib/fee.dart': fee})
+                  : gate,
+              [...fresh, 'lib/total.dart'],
+            ),
+        ],
+        written: gates.keys.toList(),
+      );
+      expect(rerunOf(plan(more, recordText: record(), states: states)), [
+        'lib/total.dart: not in the last record (new to the comparison): '
+            'lib/a.dart, lib/b.dart, lib/c.dart, and 2 more',
+      ]);
+      expect(
+        rerunOf(
+          plan(
+            more,
+            recordText: record(fee: 'old'),
+            states: states,
+          ),
+        ),
+        [
+          'lib/total.dart: changed lib/fee.dart; not in the last record (new '
+              'to the comparison): lib/a.dart, lib/b.dart, lib/c.dart, and 2 '
+              'more',
+        ],
+      );
     });
 
     test('a gate whose tests can read files runs again when any file of the '

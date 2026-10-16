@@ -30,6 +30,7 @@ int f() => 1;
         ],
       );
       expect(parsed.imports.map((ref) => ref.shown), everyElement(isNull));
+      expect(parsed.imports.map((ref) => ref.conditional), everyElement(false));
       expect(parsed.partOfLine, isNull);
       expect(parsed.syntaxErrors, isEmpty);
     });
@@ -61,6 +62,24 @@ import 'stub.dart'
         '3 web.dart',
       ]);
       expect(parsed.imports.map((ref) => ref.shown), everyElement(['open']));
+      expect(parsed.imports.map((ref) => ref.conditional), everyElement(true));
+    });
+
+    test('an import without a condition next to one with is not '
+        'conditional', () {
+      final parsed = parseDartSource('''
+import 'a.dart';
+export 'stub.dart' if (dart.library.io) 'io.dart';
+export 'b.dart';
+part 'c.g.dart';
+''');
+      expect(parsed.imports.map((ref) => '${ref.uri} ${ref.conditional}'), [
+        'a.dart false',
+        'stub.dart true',
+        'io.dart true',
+        'b.dart false',
+        'c.g.dart false',
+      ]);
     });
 
     test('an annotation is not a directive, and not an error', () {
@@ -215,6 +234,25 @@ int roll(Random random) => random.nextInt(6);
     expect(parsed.identifiers, containsAll(['Random', 'random', 'nextInt']));
     expect(parsed.identifiers, isNot(contains('Timer')));
     expect(parsed.identifiers, isNot(contains('dart')));
+  });
+
+  test('qualifiedNames: a name with the one after its period, in the code '
+      'only', () {
+    final parsed = parseDartSource('''
+// Text.rich
+import 'package:flutter/widgets.dart' as w;
+const text = 'Icon.add';
+final a = Image.asset('a.png');
+final b = w.Image.network('b');
+final c = maybe?.value;
+final d = (x).length;
+''');
+    expect(parsed.qualifiedNames, {
+      'Image.asset',
+      'w.Image',
+      'Image.network',
+      'maybe.value',
+    });
   });
 
   group('blocks that start on one line', () {

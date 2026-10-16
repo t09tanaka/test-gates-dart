@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'dart_source.dart';
 import 'import_policy.dart';
@@ -13,8 +14,9 @@ import 'types.dart';
 /// a file when the file, its tests, the test command and the tool are
 /// unchanged, and does not look at what they import. A gate keeps its
 /// results here only when nothing it can depend on changed: the gate, its
-/// tests, and every file of the package that one of them imports, exports or
-/// has as a part, however many imports away. Anything that may change the
+/// tests, and every file that one of them imports, exports or has as a part,
+/// however many imports away, in the package, in another package at a path
+/// or of the workspace, and outside the package. Anything that may change the
 /// results of every gate (a configuration, the lock file, the SDK, a tool,
 /// an argument) makes the run one of every mutant.
 ///
@@ -89,8 +91,121 @@ String flutterVersionOf(String? machine, String? plain) {
 const _fileReaders = ['dart:io', 'package:file/', 'package:test_descriptor/'];
 
 /// Names with which a Flutter test reads a file that no import names: a
-/// golden file, an asset.
-const _fileReadingNames = ['matchesGoldenFile', 'rootBundle'];
+/// golden file (`flutter_test`, `golden_toolkit`, `alchemist`), an asset or
+/// a font of the package (`rootBundle`, an [AssetBundle], an image of an
+/// asset, and `X.asset(...)` below).
+///
+/// The names are those of the code where they are used. A file of another
+/// package that the lock file pins (hosted, git) is not read, so a helper
+/// there that reads files under a name of its own is not seen, and neither
+/// is a call of `load` on a bundle that is not named here.
+const _fileReadingNames = [
+  'matchesGoldenFile',
+  'rootBundle',
+  'DefaultAssetBundle',
+  'AssetBundle',
+  'PlatformAssetBundle',
+  'CachingAssetBundle',
+  'AssetImage',
+  'ExactAssetImage',
+  'loadString',
+  'loadStructuredData',
+  'screenMatchesGolden',
+  'multiScreenGolden',
+  'testGoldens',
+  'loadAppFonts',
+  'goldenTest',
+];
+
+/// The member that reads an asset as a named constructor: `Image.asset`,
+/// and those of other packages in the same way (`SvgPicture.asset`).
+const _assetConstructor = '.asset';
+
+/// Where the `lib/` of each other package is, relative to the package with
+/// `/` and ending in `/` (`../other/lib/`), for a package whose files can
+/// change without a change of the lock file: one at a path, a member of the
+/// workspace. `null` for one that the lock file pins (hosted, git, an SDK):
+/// a change of it is one of the lock file. [problem]: why the packages
+/// cannot be told; then [roots] is empty.
+typedef PackageRoots = ({Map<String, String?> roots, String? problem});
+
+final _lockedPackage = RegExp(r'^  ([^\s:]+):\s*$');
+final _lockedSource = RegExp(r'^    source:\s*"?([^\s"]+)"?\s*$');
+
+/// The other packages, from the text of `.dart_tool/package_config.json`
+/// ([config], at [configFile]) and of `pubspec.lock` ([lock]) of the root of
+/// the resolution, for the package at the directory [package]. `null` for a
+/// file that cannot be read.
+PackageRoots packageRootsOf({
+  required String? config,
+  required String? lock,
+  required Uri configFile,
+  required Uri package,
+}) {
+  PackageRoots unknown(String why) =>
+      (roots: const {}, problem: '$why (run dart pub get)');
+  if (config == null) {
+    return unknown('there is no .dart_tool/package_config.json');
+  }
+  if (lock == null) {
+    return unknown('there is no pubspec.lock');
+  }
+  final sources = <String, String>{};
+  String? current;
+  for (final line in const LineSplitter().convert(lock)) {
+    final name = _lockedPackage.firstMatch(line)?.group(1);
+    final source = _lockedSource.firstMatch(line)?.group(1);
+    if (name != null) {
+      current = name;
+    } else if (source != null && current != null) {
+      sources[current] = source;
+    }
+  }
+  final packages = _decodeObject(config)?['packages'];
+  if (packages is! List<Object?>) {
+    return unknown('the .dart_tool/package_config.json cannot be read');
+  }
+  final roots = <String, String?>{};
+  for (final value in packages) {
+    final entry = asObject(value);
+    final name = asText(entry?['name']);
+    final rootUri = asText(entry?['rootUri']);
+    if (name == null || rootUri == null) {
+      return unknown('the .dart_tool/package_config.json cannot be read');
+    }
+    final root = _directory(configFile.resolve(rootUri));
+    if (root.scheme != 'file') {
+      return unknown('$name is not on the disk: $rootUri');
+    }
+    final source = sources[name];
+    roots[name] = source == null || source == 'path'
+        ? _relative(
+            package,
+            _directory(root.resolve(asText(entry?['packageUri']) ?? '')),
+          )
+        : null;
+  }
+  return (roots: roots, problem: null);
+}
+
+/// [uri] as a directory: with a `/` at the end, so that a URI is resolved
+/// below it. One that had a `/` has two, and an empty segment is no
+/// directory (see [_relative]).
+Uri _directory(Uri uri) => uri.replace(path: '${uri.path}/');
+
+/// The directory [to] from the directory [from], with `/`, ending in `/`
+/// (empty for the same directory).
+String _relative(Uri from, Uri to) {
+  final start = from.pathSegments.where((part) => part.isNotEmpty).toList();
+  final end = to.pathSegments.where((part) => part.isNotEmpty).toList();
+  final common = Iterable<int>.generate(
+    math.min(start.length, end.length),
+  ).takeWhile((index) => start[index] == end[index]).length;
+  return [
+    ...List.filled(start.length - common, '..'),
+    ...end.skip(common),
+  ].map((part) => '$part/').join();
+}
 
 /// What the results of a gate depend on among the files of the package.
 ///
@@ -101,23 +216,37 @@ const _fileReadingNames = ['matchesGoldenFile', 'rootBundle'];
 typedef Reach = ({List<String> files, bool readsFiles, String? problem});
 
 /// The files that [starts] (the gate, its tests) reach through imports,
-/// exports and parts inside the package, with the rules of [resolveUri].
-/// [readSource] gives the content of a file of the package, `null` when it
-/// cannot be read.
+/// exports and parts, with the rules of [resolveUri]: in the package, in the
+/// other packages whose [PackageRoots.roots] are known (at a path, a member
+/// of the workspace), and outside the package (`../shared/x.dart`, an alias
+/// to `..`). A path outside the package starts with `../`. [readSource]
+/// gives the content of a file, `null` when it cannot be read.
+///
+/// A file that a conditional import names and that is not there is one of
+/// the files (its fingerprint says that it is missing), not a problem: the
+/// file of another platform need not exist.
 Reach reachOf(
   List<String> starts,
   List<ImportAlias> aliases,
-  String? Function(String path) readSource,
-) {
+  String? Function(String path) readSource, {
+  required PackageRoots packages,
+}) {
+  final all = [
+    ...aliases,
+    for (final MapEntry(key: name, value: root) in packages.roots.entries)
+      if (root != null) ImportAlias('package:$name/', root),
+  ];
   final seen = {...starts};
   final queue = [...starts];
+  final required = {...starts};
+  final missing = <String>[];
   var readsFiles = false;
   String? problem;
   for (var index = 0; index < queue.length; index++) {
     final path = queue[index];
     final source = readSource(path);
     if (source == null) {
-      problem ??= '$path cannot be read';
+      missing.add(path);
       continue;
     }
     final parsed = parseDartSource(source);
@@ -125,22 +254,46 @@ Reach reachOf(
       problem ??= '$path:$line: a URI that is not written out as it is read';
     }
     readsFiles =
-        readsFiles || _fileReadingNames.any(parsed.identifiers.contains);
+        readsFiles ||
+        _fileReadingNames.any(parsed.identifiers.contains) ||
+        parsed.qualifiedNames.any((name) => name.endsWith(_assetConstructor));
     for (final imported in parsed.imports) {
       final uri = imported.uri;
       readsFiles = readsFiles || _fileReaders.any(uri.startsWith);
-      final target = resolveUri(uri, path, aliases);
+      final target = resolveUri(uri, path, all);
       if (target == null) {
+        if (uri.startsWith('package:')) {
+          problem ??= _otherPackage(packages, '$path:${imported.line}', uri);
+        }
         continue;
       }
-      if (target.startsWith('../')) {
-        problem ??= '$path:${imported.line}: "$uri" is outside the package';
-      } else if (seen.add(target)) {
+      if (!imported.conditional) {
+        required.add(target);
+      }
+      if (seen.add(target)) {
         queue.add(target);
       }
     }
   }
+  for (final path in missing) {
+    if (required.contains(path)) {
+      problem ??= '$path cannot be read';
+    }
+  }
   return (files: [...seen]..sort(), readsFiles: readsFiles, problem: problem);
+}
+
+/// Why the import of [uri] at [where], a package that is not followed, is a
+/// problem, or `null` when the lock file pins it.
+String? _otherPackage(PackageRoots packages, String where, String uri) {
+  final why = packages.problem;
+  if (why != null) {
+    return '$where: "$uri" cannot be followed: $why';
+  }
+  final name = uri.substring('package:'.length).split('/').first;
+  return packages.roots.containsKey(name)
+      ? null
+      : '$where: "$uri" is not a package of .dart_tool/package_config.json';
 }
 
 /// Where `flutter test` looks for a `flutter_test_config.dart` that it runs
@@ -333,10 +486,26 @@ ReusePlan planReuse({
     final files = last == null
         ? const <String>[]
         : _differing(last.files, gate.files);
+    // A file that the record does not have did not change: it was not
+    // compared before (a new import, or a version that compared fewer
+    // files). It is named apart from the files that changed.
+    final added = [
+      for (final path in files)
+        if (!last!.files.containsKey(path)) path,
+    ];
+    final changed = [
+      for (final path in files)
+        if (!added.contains(path)) path,
+    ];
     final why = last == null
         ? 'the last run left no result of it'
         : files.isNotEmpty
-        ? 'changed ${_listed(files)}'
+        ? [
+            if (changed.isNotEmpty) 'changed ${_listed(changed)}',
+            if (added.isNotEmpty)
+              'not in the last record (new to the comparison): '
+                  '${_listed(added)}',
+          ].join('; ')
         : gate.readsFiles && gate.everything == null
         ? 'its tests can read any file, and the files of the package cannot '
               'be listed'
