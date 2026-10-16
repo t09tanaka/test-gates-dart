@@ -36,6 +36,52 @@ const configFiles = [
   'test-gates.json',
 ];
 
+final _flutterDependency = RegExp(
+  r'^\s+sdk:[ \t]*flutter[ \t]*$',
+  multiLine: true,
+);
+final _workspaceMember = RegExp(
+  r'^resolution:[ \t]*workspace[ \t]*$',
+  multiLine: true,
+);
+final _workspaceRoot = RegExp(r'^workspace:', multiLine: true);
+
+/// True when the pubspec [pubspec] has a dependency from the Flutter SDK:
+/// then the tests run with `flutter test`, and the Dart of that SDK.
+bool usesFlutter(String pubspec) => _flutterDependency.hasMatch(pubspec);
+
+/// True when the pubspec [pubspec] is of a member of a pub workspace: its
+/// dependencies are resolved by the root, in the lock file of the root.
+bool inWorkspace(String pubspec) => _workspaceMember.hasMatch(pubspec);
+
+/// True when the pubspec [pubspec] is the root of a pub workspace.
+bool isWorkspaceRoot(String pubspec) => _workspaceRoot.hasMatch(pubspec);
+
+/// The files of the root of a workspace [levels] directories above the
+/// package that may affect every gate, relative to the package: the
+/// pubspec (with its `dependency_overrides`) and the lock file.
+List<String> workspaceFiles(int levels) {
+  final up = '../' * levels;
+  return ['${up}pubspec.yaml', '${up}pubspec.lock'];
+}
+
+/// The version of Flutter for the context of a run: from the output of
+/// `flutter --version --machine` ([machine]), else the first lines of
+/// `flutter --version` ([plain]), else that it cannot be told. A value that
+/// cannot be told is compared like any other.
+String flutterVersionOf(String? machine, String? plain) {
+  final start = machine?.indexOf('{') ?? -1;
+  final object = start < 0 ? null : _decodeObject(machine!.substring(start));
+  if (object != null) {
+    String field(String name) => asText(object[name]) ?? '?';
+    return 'Flutter ${field('frameworkVersion')} '
+        '(${field('frameworkRevision')}), engine ${field('engineRevision')}, '
+        'Dart ${field('dartSdkVersion')}';
+  }
+  final text = plain?.trim() ?? '';
+  return text.isEmpty ? 'cannot be told' : text;
+}
+
 /// Libraries with which a test can read a file that no import names.
 const _fileReaders = ['dart:io', 'package:file/', 'package:test_descriptor/'];
 
@@ -220,6 +266,21 @@ List<String> _differing(Map<String, String> before, Map<String, String> now) =>
       ...now.keys,
     }.where((key) => before[key] != now[key]).toList()..sort();
 
+/// True when the report as it is now ([report], a fingerprint) is the one
+/// that the record [recordText] names, and the record was made in the same
+/// [context]: then what the report says about a gate that is not run is what
+/// the record says was measured.
+bool reportVerified({
+  required String? recordText,
+  required Map<String, String> context,
+  required String? report,
+}) {
+  final record = recordText == null ? null : decodeRecord(recordText);
+  return record != null &&
+      _differing(record.context, context).isEmpty &&
+      report == record.report;
+}
+
 /// Decides which gates are run again.
 ///
 /// [forced]: why every mutant is run whatever changed (`--force`, `CI`), or
@@ -328,16 +389,24 @@ List<String> timedOutGates(String? report, List<String> gates) {
 
 /// The record a run leaves: the gates of [ran] whose results are in the
 /// report now ([written]), and those of the [last] record that the run did
-/// not touch, when it ran in the same [context].
+/// not touch, when it ran in the same [context] and the report was checked
+/// against that record before the run ([reportVerified]). Without that check
+/// (`--force`, `CI`, a problem, a report that is not the one the record
+/// names) what the report says about the other gates is not known to be what
+/// the record says, and they are left out.
 String recordAfterRun({
   required String? last,
+  required bool reportVerified,
   required Map<String, String> context,
   required String report,
   required List<GateState> ran,
   required List<String> written,
 }) {
   final before = last == null ? null : decodeRecord(last);
-  final kept = before != null && _differing(before.context, context).isEmpty
+  final kept =
+      reportVerified &&
+          before != null &&
+          _differing(before.context, context).isEmpty
       ? before.gates
       : const <String, GateState>{};
   final names = ran.map((gate) => gate.path).toSet();

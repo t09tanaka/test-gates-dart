@@ -96,6 +96,7 @@ void main() {
     List<List<String>>? candidates,
     Map<String, String>? environment,
     bool ci = false,
+    List<String>? flutter,
   }) => runMutation(
     package.dir.path,
     report,
@@ -109,6 +110,7 @@ void main() {
     fetch: [Platform.resolvedExecutable, 'fake_fetch.dart'],
     environment: environment,
     ci: ci,
+    flutter: flutter,
   );
 
   /// What was printed, without the lines that say which results of the last
@@ -954,12 +956,121 @@ void main() {
       ]);
     });
 
+    test('--force --gate with a report that was not checked keeps no '
+        'result of the other gates for the next run', () async {
+      expect(await mutation(), 0);
+      // The report changes behind the record (another run, a hand edit):
+      // what it says about lib/b.dart is no longer what was measured.
+      final changed = jsonDecode(jsonEncode(killed())) as Map<String, Object?>;
+      ((changed['files'] as Map)['lib/b.dart'] as Map)['mutants'] = [
+        times('Killed'),
+      ];
+      package.write(reportFile, jsonEncode(changed));
+      tool({'report': changed});
+      expect(await mutation(force: true, only: ['lib/a.dart']), 0);
+      tool({'report': killed()});
+      package.out.clear();
+      expect(await mutation(), 0);
+      expect(package.out.take(3), [
+        'test_gates mutation: 1 of 2 gate(s) reused, 1 run again with every '
+            'mutant',
+        '  lib/b.dart: the last run left no result of it',
+        isNot(startsWith('  ')),
+      ]);
+    });
+
+    test('a Flutter package: the version of Flutter is part of what every '
+        'gate depends on', () async {
+      package.write(
+        'pubspec.yaml',
+        'name: app\ndependencies:\n  flutter:\n    sdk: flutter\n',
+      );
+      package.write('fake_flutter.dart', '''
+import 'dart:io';
+void main(List<String> arguments) {
+  if (arguments.contains('--machine')) {
+    stdout.write(File('flutter-version.json').readAsStringSync());
+  }
+}
+''');
+      final flutter = [Platform.resolvedExecutable, 'fake_flutter.dart'];
+      String version(String revision) =>
+          '{"frameworkVersion": "3.47.2", "frameworkRevision": "$revision", '
+          '"engineRevision": "e", "dartSdkVersion": "3.13.2"}';
+      package.write('flutter-version.json', version('a'));
+      expect(await mutation(flutter: flutter), 0);
+      package.out.clear();
+      expect(await mutation(flutter: flutter), 0);
+      expect(package.out.first, reused);
+      package.write('flutter-version.json', version('b'));
+      package.out.clear();
+      expect(await mutation(flutter: flutter), 0);
+      expect(
+        package.out.first,
+        'test_gates mutation: running every mutant of the gates (--force): '
+        'changed since the last run: Flutter',
+      );
+    });
+
     test('a run that ends without a verdict leaves no record', () async {
       expect(await mutation(), 0);
       tool({'exit': 2});
       expect(await mutation(), 2);
       expect(package.file(record).existsSync(), isFalse);
     });
+  });
+
+  test('a member of a pub workspace: the pubspec and the lock file of the '
+      'root are part of what every gate depends on', () async {
+    // The root of the workspace, with the package below it.
+    package.write('pubspec.yaml', 'name: root\nworkspace:\n  - packages/app\n');
+    package.write('pubspec.lock', 'packages: {}\n');
+    const member = 'packages/app';
+    final dir = '${package.dir.path}/$member';
+    package.write('$member/pubspec.yaml', 'name: app\nresolution: workspace\n');
+    package.write('$member/lib/a.dart', sourceA);
+    package.write('$member/lib/b.dart', sourceB);
+    package.write('$member/lib/a_test.dart', '');
+    package.write('$member/test/b_test.dart', '');
+    package.write('$member/test-gates.json', package.read('test-gates.json'));
+    package.write(
+      '$member/fake.json',
+      jsonEncode({'report': everythingKilled}),
+    );
+    for (final name in ['fake_dart_mutant.dart', 'fake_fetch.dart']) {
+      package.file(name).copySync('$dir/$name');
+    }
+    Future<int> run() => runMutation(
+      dir,
+      null,
+      const [],
+      package.io,
+      candidates: [fake],
+      ci: false,
+    );
+    expect(await run(), 0, reason: package.err.join('\n'));
+    package.out.clear();
+    expect(await run(), 0);
+    expect(package.out.first, startsWith('test_gates mutation: nothing that'));
+    package.write('pubspec.lock', 'packages: {a: {}}\n');
+    package.out.clear();
+    expect(await run(), 0);
+    expect(
+      package.out.first,
+      'test_gates mutation: running every mutant of the gates (--force): '
+      'changed since the last run: ../../pubspec.lock',
+    );
+    package.write(
+      'pubspec.yaml',
+      'name: root\nworkspace:\n  - packages/app\n'
+          'dependency_overrides:\n  a: 1.0.0\n',
+    );
+    package.out.clear();
+    expect(await run(), 0);
+    expect(
+      package.out.first,
+      endsWith('changed since the last run: ../../pubspec.yaml'),
+    );
   });
 
   group('--gate', () {

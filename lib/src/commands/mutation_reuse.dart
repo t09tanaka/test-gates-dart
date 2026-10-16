@@ -91,6 +91,7 @@ ReuseInputs readReuseInputs(
   required List<String> rest,
   required String reportFile,
   required String? reportText,
+  List<String>? flutter,
 }) {
   final sources = <String, String?>{};
   String? readSource(String path) => sources.putIfAbsent(path, () {
@@ -171,6 +172,7 @@ ReuseInputs readReuseInputs(
       'the options after --': jsonEncode(rest),
       '--report': reportFile,
       for (final file in configFiles) file: fingerprintIn(file),
+      ..._packageContext(dir, flutter ?? const ['flutter']),
     },
     gates: gates,
     problem: problem,
@@ -180,6 +182,77 @@ ReuseInputs readReuseInputs(
       for (final target in targets) target.file,
     ]),
   );
+}
+
+/// Output of [command] with [arguments], or `null` when it cannot be
+/// started or fails.
+String? _outputOf(List<String> command, List<String> arguments, String dir) {
+  try {
+    final result = Process.runSync(
+      command.first,
+      [...command.sublist(1), ...arguments],
+      workingDirectory: dir,
+      runInShell: Platform.isWindows,
+    );
+    return result.exitCode == 0 ? result.stdout as String : null;
+  } on ProcessException {
+    return null;
+  }
+}
+
+/// What the pubspec of the package in [dir] adds to the context: for a
+/// member of a pub workspace, the pubspec and the lock file of the root
+/// (found by going up to the pubspec with `workspace:`); for a Flutter
+/// package, the version of Flutter that [flutter] reports.
+Map<String, String> _packageContext(String dir, List<String> flutter) {
+  final String pubspec;
+  try {
+    pubspec = readText(_inPackage(dir, 'pubspec.yaml'));
+  } on FileSystemException {
+    return const {};
+  }
+  final context = <String, String>{};
+  if (inWorkspace(pubspec)) {
+    var root = Directory(dir).absolute.parent;
+    var levels = 1;
+    String? found;
+    while (found == null) {
+      final file = File('${root.path}${Platform.pathSeparator}pubspec.yaml');
+      String? text;
+      try {
+        text = readText(file.path);
+      } on FileSystemException {
+        text = null;
+      }
+      if (text != null && isWorkspaceRoot(text)) {
+        found = root.path;
+      } else if (root.parent.path == root.path) {
+        break;
+      } else {
+        root = root.parent;
+        levels++;
+      }
+    }
+    if (found == null) {
+      context['the root of the workspace'] = 'not found';
+    } else {
+      for (final file in workspaceFiles(levels)) {
+        context[file] = _fingerprintOf(_inPackage(dir, file)) ?? 'missing';
+      }
+    }
+  }
+  if (usesFlutter(pubspec)) {
+    // `--version` alone only when `--machine` gave nothing that can be read:
+    // each start of flutter takes a while.
+    final machine = flutterVersionOf(
+      _outputOf(flutter, ['--version', '--machine'], dir),
+      null,
+    );
+    context['Flutter'] = machine != flutterVersionOf(null, null)
+        ? machine
+        : flutterVersionOf(null, _outputOf(flutter, ['--version'], dir));
+  }
+  return context;
 }
 
 /// The package name from pubspec.yaml in [dir], or `null`.
@@ -213,6 +286,11 @@ void writeRecord(
     recordAfterRun(
       last: inputs.recordText,
       context: inputs.context,
+      reportVerified: reportVerified(
+        recordText: inputs.recordText,
+        context: inputs.context,
+        report: inputs.report,
+      ),
       report: fingerprint(utf8.encode(reportText)),
       ran: inputs.gates,
       written: written,

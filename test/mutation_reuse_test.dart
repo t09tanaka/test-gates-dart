@@ -48,6 +48,7 @@ Map<String, String> contextOf(Map<String, String> files) => {
 /// The record of a run of every gate on [files], with the report [report].
 String recordOf(Map<String, String> files, {String report = 'r1'}) =>
     recordAfterRun(
+      reportVerified: true,
       last: null,
       context: contextOf(files),
       report: report,
@@ -466,6 +467,7 @@ void main() {
     test('a gate that is not in the record runs again', () {
       final files = package();
       final record = recordAfterRun(
+        reportVerified: true,
         last: null,
         context: contextOf(files),
         report: 'r1',
@@ -502,6 +504,7 @@ void main() {
       );
       final before = statesOf(files);
       final record = recordAfterRun(
+        reportVerified: true,
         last: null,
         context: contextOf(files),
         report: 'r1',
@@ -619,6 +622,7 @@ void main() {
     };
 
     final last = recordAfterRun(
+      reportVerified: true,
       last: null,
       context: {'k': 'v'},
       report: 'r1',
@@ -629,6 +633,7 @@ void main() {
     test('the gates of the run that are in the report, and the others of the '
         'last record when the context is the same', () {
       final record = recordAfterRun(
+        reportVerified: true,
         last: last,
         context: {'k': 'v'},
         report: 'r2',
@@ -642,6 +647,7 @@ void main() {
 
     test('a gate of the run that is not in the report is dropped', () {
       final record = recordAfterRun(
+        reportVerified: true,
         last: last,
         context: {'k': 'v'},
         report: 'r2',
@@ -651,6 +657,22 @@ void main() {
       expect(filesOf(record), {'lib/a.dart': '1'});
     });
 
+    test(
+      'a report that was not checked against the record before the run '
+      '(--force, CI, a problem, another report): only the gates of the run',
+      () {
+        final record = recordAfterRun(
+          reportVerified: false,
+          last: last,
+          context: {'k': 'v'},
+          report: 'r2',
+          ran: [gate('lib/b.dart', '2')],
+          written: ['lib/b.dart'],
+        );
+        expect(filesOf(record), {'lib/b.dart': '2'});
+      },
+    );
+
     test('in another context, or after a record that cannot be read, only the '
         'gates of the run', () {
       for (final (before, context) in [
@@ -659,6 +681,7 @@ void main() {
         (null, {'k': 'v'}),
       ]) {
         final record = recordAfterRun(
+          reportVerified: true,
           last: before,
           context: context,
           report: 'r2',
@@ -667,6 +690,109 @@ void main() {
         );
         expect(filesOf(record), {'lib/b.dart': '2'});
       }
+    });
+  });
+
+  group('reportVerified', () {
+    final files = package();
+    final record = recordOf(files);
+
+    test('the record can be read, the context is the same and the report is '
+        'the one it names', () {
+      expect(
+        reportVerified(
+          recordText: record,
+          context: contextOf(files),
+          report: 'r1',
+        ),
+        isTrue,
+      );
+    });
+
+    test('anything else is not', () {
+      for (final (text, context, report) in [
+        (null, contextOf(files), 'r1'),
+        ('{', contextOf(files), 'r1'),
+        (record, {...contextOf(files), 'pubspec.lock': 'x'}, 'r1'),
+        (record, contextOf(files), 'r2'),
+        (record, contextOf(files), null),
+      ]) {
+        expect(
+          reportVerified(recordText: text, context: context, report: report),
+          isFalse,
+        );
+      }
+    });
+  });
+
+  group('the package', () {
+    test('usesFlutter: a dependency from the Flutter SDK', () {
+      expect(
+        usesFlutter('name: a\ndependencies:\n  flutter:\n    sdk: flutter\n'),
+        isTrue,
+      );
+      expect(
+        usesFlutter(
+          'name: a\ndev_dependencies:\n  flutter_test:\n    sdk:   flutter  \n',
+        ),
+        isTrue,
+      );
+      expect(usesFlutter('name: a\ndependencies:\n  path: ^1.0.0\n'), isFalse);
+      expect(usesFlutter('name: a\n# sdk: flutter\n'), isFalse);
+      expect(usesFlutter('name: a\n  sdk: flutterish\n'), isFalse);
+    });
+
+    test('inWorkspace: resolution: workspace', () {
+      expect(inWorkspace('name: a\nresolution: workspace\n'), isTrue);
+      expect(inWorkspace('name: a\nresolution:   workspace  \n'), isTrue);
+      expect(inWorkspace('name: a\n'), isFalse);
+      expect(inWorkspace('name: a\n# resolution: workspace\n'), isFalse);
+      expect(inWorkspace('name: a\nresolution: workspaces\n'), isFalse);
+      expect(inWorkspace('name: a\n  resolution: workspace\n'), isFalse);
+    });
+
+    test('isWorkspaceRoot: a top-level workspace key', () {
+      expect(isWorkspaceRoot('name: r\nworkspace:\n  - packages/a\n'), isTrue);
+      expect(isWorkspaceRoot('name: r\nworkspace: [packages/a]\n'), isTrue);
+      expect(isWorkspaceRoot('name: r\n'), isFalse);
+      expect(isWorkspaceRoot('name: r\n  workspace:\n'), isFalse);
+      expect(isWorkspaceRoot('name: r\nworkspaces:\n'), isFalse);
+    });
+
+    test('workspaceFiles: the pubspec and the lock file of the root, from the '
+        'package', () {
+      expect(workspaceFiles(2), ['../../pubspec.yaml', '../../pubspec.lock']);
+      expect(workspaceFiles(1), ['../pubspec.yaml', '../pubspec.lock']);
+    });
+
+    test(
+      'flutterVersionOf: the versions and revisions of --version --machine',
+      () {
+        const machine =
+            '{"frameworkVersion": "3.47.2", "channel": "stable", '
+            '"frameworkRevision": "abc", "engineRevision": "def", '
+            '"dartSdkVersion": "3.13.2", "flutterRoot": "/somewhere"}';
+        expect(
+          flutterVersionOf('Some banner\n$machine\n', null),
+          'Flutter 3.47.2 (abc), engine def, Dart 3.13.2',
+        );
+        expect(
+          flutterVersionOf('{"frameworkVersion": "3.47.2"}', null),
+          'Flutter 3.47.2 (?), engine ?, Dart ?',
+        );
+      },
+    );
+
+    test('flutterVersionOf: else what --version printed, else that it cannot '
+        'be told', () {
+      expect(
+        flutterVersionOf('not json', ' Flutter 3.47.2 \n'),
+        'Flutter 3.47.2',
+      );
+      expect(flutterVersionOf('{', 'Flutter 3.47.2'), 'Flutter 3.47.2');
+      expect(flutterVersionOf('[]', null), 'cannot be told');
+      expect(flutterVersionOf(null, '  '), 'cannot be told');
+      expect(flutterVersionOf(null, null), 'cannot be told');
     });
   });
 

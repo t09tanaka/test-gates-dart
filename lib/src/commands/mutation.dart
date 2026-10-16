@@ -235,6 +235,7 @@ Future<int> runMutation(
   List<String>? fetch,
   Map<String, String>? environment,
   bool? ci,
+  List<String>? flutter,
   Duration grace = handOverGrace,
 }) async {
   final manifest = readManifest(dir);
@@ -368,6 +369,7 @@ Future<int> runMutation(
       rest: rest,
       reportFile: reportFile,
       reportText: reportText,
+      flutter: flutter,
     );
     reuse = planReuse(
       forced: force
