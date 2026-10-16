@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.3.0
+
+`mutation` reuses the results of the last run per gate, by what the gate
+depends on, and no longer leaves that to `dart_mutant`.
+
+- **A gate runs again when a file it depends on changed**: the gate, its
+  tests, and every file of the package that one of them imports, exports or
+  has as a part, however many imports away (a file the gate calls, a helper
+  of a test), and a `flutter_test_config.dart` above a test. It then runs
+  with every mutant (`--force --only <gate>` for `dart_mutant`); the gates
+  whose files did not change keep their results in the report. Until 0.2.3
+  the results of `dart_mutant` were reused, which only look at the gate, its
+  tests, the test command and the tool, so a `Killed` survived a change of
+  a file the gate imports.
+- **Every mutant of every gate is run** when one of `pubspec.yaml`,
+  `pubspec.lock`, `pubspec_overrides.yaml`, `analysis_options.yaml`,
+  `dart_test.yaml`, `build.yaml`, `test-gates.json`, the version of the Dart
+  SDK, of `test_gates` or of `dart_mutant`, the options after `--` or
+  `--report` changed; when what a gate depends on cannot be told from its
+  imports; when there is no record of a run, or the report is not the one
+  it left; with `--force`; for a part of a run (`--shard`); and **when the
+  environment variable `CI` is set**. The first line of `mutation` says
+  which, or which gates run again and why.
+- A gate whose tests import `dart:io`, `package:file` or
+  `package:test_descriptor`, or name `matchesGoldenFile` or `rootBundle`,
+  can read any file: it runs again when any file of the package that git
+  lists changed.
+- When some gates run again, a gate with a mutant that timed out in the last
+  run runs again as well, so that the `Timeout` is measured again. When
+  nothing changed, `dart_mutant` is started as before and measures only the
+  timeouts again.
+- The record is `.dart_tool/test_gates/mutation-record.json`. The first run
+  after the upgrade runs every mutant.
+
 ## 0.2.3 (2026-10-13)
 
 `mutation` works with `dart_mutant` 0.2.1 and every later 0.2.x. A
