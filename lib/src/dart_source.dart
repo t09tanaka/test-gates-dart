@@ -13,6 +13,7 @@ class ImportRef {
     required this.uri,
     required this.line,
     this.shown,
+    this.conditional = false,
   });
 
   final DirectiveKind kind;
@@ -26,6 +27,11 @@ class ImportRef {
   /// The names of the `show` combinators, or `null` when the whole library is
   /// reachable (no `show`). Always `null` for a part.
   final List<String>? shown;
+
+  /// True for every URI of a conditional import or export (`import 'a.dart'
+  /// if (dart.library.io) 'a_io.dart'`): which one is loaded depends on the
+  /// platform, and the others need not exist.
+  final bool conditional;
 }
 
 /// A finding at a line of the source.
@@ -47,6 +53,7 @@ class DartSource {
     required this.syntaxErrors,
     required this.environmentReads,
     required this.identifiers,
+    required this.qualifiedNames,
     required this.sharedBlockLines,
     required this.disabledTests,
     required this.code,
@@ -73,6 +80,10 @@ class DartSource {
 
   /// Every identifier of the code (not of comments or strings).
   final Set<String> identifiers;
+
+  /// Every name of the code followed by `.` or `?.`, with the token after
+  /// it: `Image.asset`.
+  final Set<String> qualifiedNames;
 
   /// Lines on which more than one block starts, with the number of blocks.
   /// See [parseDartSource].
@@ -116,7 +127,12 @@ DartSource parseDartSource(String source) {
   final imports = <ImportRef>[];
   final uncheckable = <int>[];
   int? partOfLine;
-  void add(DirectiveKind kind, StringLiteral uri, [List<String>? shown]) {
+  void add(
+    DirectiveKind kind,
+    StringLiteral uri, [
+    List<String>? shown,
+    bool conditional = false,
+  ]) {
     final value = uri.stringValue;
     if (value == null || !_isPlainUri(value)) {
       uncheckable.add(lineOf(uri.offset));
@@ -127,6 +143,7 @@ DartSource parseDartSource(String source) {
           uri: value,
           line: lineOf(uri.offset),
           shown: shown,
+          conditional: conditional,
         ),
       );
     }
@@ -144,9 +161,10 @@ DartSource parseDartSource(String source) {
       final kind = directive is ImportDirective
           ? DirectiveKind.import
           : DirectiveKind.export;
-      add(kind, directive.uri, shown);
+      final conditional = directive.configurations.isNotEmpty;
+      add(kind, directive.uri, shown, conditional);
       for (final configuration in directive.configurations) {
-        add(kind, configuration.uri, shown);
+        add(kind, configuration.uri, shown, conditional);
       }
     } else if (directive is PartDirective) {
       add(DirectiveKind.part, directive.uri);
@@ -173,6 +191,7 @@ DartSource parseDartSource(String source) {
   }
 
   final identifiers = <String>{};
+  final qualifiedNames = <String>{};
   final environmentReads = <SourceFinding>[];
   final disabledTests = <SourceFinding>[];
   var token = unit.beginToken;
@@ -198,6 +217,7 @@ DartSource parseDartSource(String source) {
     final member = next.next!.lexeme;
     if (next.type == TokenType.PERIOD ||
         next.type == TokenType.QUESTION_PERIOD) {
+      qualifiedNames.add('$name.$member');
       if ((name == 'Platform' && member == 'environment') ||
           (_environmentTypes.contains(name) &&
               _environmentConstructors.contains(member))) {
@@ -243,6 +263,7 @@ DartSource parseDartSource(String source) {
     ],
     environmentReads: environmentReads,
     identifiers: identifiers,
+    qualifiedNames: qualifiedNames,
     sharedBlockLines: sharedBlockLines,
     disabledTests: disabledTests,
     code: code.toString(),
