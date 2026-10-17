@@ -289,14 +289,12 @@ Future<CommandResult> runCommand(
   // process whose parent has ended is no longer listed under the command: a
   // listing taken after a launcher ended, and before that end is seen here,
   // is empty. It does not replace the last one, which has the tool behind
-  // the launcher in it.
+  // the launcher in it; only what of that one has ended is dropped.
   var seen = const <int>[];
   final watch = handOver
       ? Timer.periodic(const Duration(milliseconds: 500), (_) {
           final listed = listDescendants(process.pid);
-          if (listed.isNotEmpty) {
-            seen = listed;
-          }
+          seen = listed.isNotEmpty ? listed : _stillThere(seen);
         })
       : null;
 
