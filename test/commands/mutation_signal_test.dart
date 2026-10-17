@@ -183,4 +183,59 @@ Future<void> main(List<String> arguments) async {
     );
     expect(package.read('returned'), 'after the tool');
   });
+
+  test('a listing taken after the launcher ended does not lose the tool '
+      'behind it', () async {
+    // What the command lists of its descendants, decided here: the tool is
+    // seen once, and then no more, as in a listing taken in the moment
+    // between the end of the launcher and the moment that end is seen.
+    package.write('fake.json', jsonEncode({'launcher': true}));
+    package.write('listing.dart', '''
+import 'dart:io';
+
+import 'package:test_gates/src/io/process.dart';
+
+Future<void> main(List<String> command) async {
+  var seen = false;
+  List<int> listing(int root) {
+    if (seen) {
+      return const [];
+    }
+    final found = descendantsOf(root);
+    final started = File('started');
+    final tool = started.existsSync()
+        ? int.tryParse(started.readAsStringSync())
+        : null;
+    seen = found.contains(tool);
+    return found;
+  }
+
+  final signals = SignalWatch();
+  final result = await runCommand(
+    command,
+    workingDirectory: '.',
+    capture: false,
+    signals: signals,
+    handOver: true,
+    listDescendants: listing,
+  );
+  await signals.cancel();
+  stdout.writeln(result.signal);
+  File('returned').writeAsStringSync(
+    File('put-back').existsSync() ? 'after the tool' : 'before the tool',
+  );
+}
+''');
+    final result = await Process.run(Platform.resolvedExecutable, [
+      '--packages=${File('.dart_tool/package_config.json').absolute.path}',
+      'listing.dart',
+      Platform.resolvedExecutable,
+      '${package.dir.path}/fake_dart_mutant.dart',
+      'run',
+    ], workingDirectory: package.dir.path);
+
+    expect(result.exitCode, 0, reason: '${result.stderr}');
+    expect((result.stdout as String).trim(), '${ProcessSignal.sigterm}');
+    expect(package.read('returned'), 'after the tool');
+  });
 }
