@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.2
+
+- When `dart_mutant` ends with `FAILED` and survivors that
+  `test-gates.json` allows (`equivalentMutants`) are among the ones it
+  counted, `mutation` says so on the line right under it:
+  `the FAILED of dart_mutant above counts the 2 survivor(s) that test-gates.json allows (equivalentMutants). The verdict is the last line, of test_gates`.
+  When some survivors are not allowed, the line gives their number too.
+  `dart_mutant` knows no allowance, so its `FAILED` was taken for the result
+  also when the verdict of `test_gates` was OK. The verdict and the exit code
+  are unchanged.
+
+### Fixed
+
+- The upgrade note of 0.3.1 (and the README) said that the first run after
+  the upgrade runs only the gates that reach a package at a path or another
+  member of the workspace again. It runs every mutant of every gate: an
+  upgrade changes the version of `test_gates` and `pubspec.lock`, which are
+  in the record. The note of 0.3.1 below is corrected.
+
 ## 0.3.1
 
 - **Fix: `mutation` reused the results of a gate after a file it depends on
