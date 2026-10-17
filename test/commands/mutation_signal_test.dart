@@ -227,7 +227,7 @@ Future<void> main(List<String> command) async {
 }
 ''');
     final result = await Process.run(Platform.resolvedExecutable, [
-      '--packages=${File('.dart_tool/package_config.json').absolute.path}',
+      '--packages=${inPackage('.dart_tool/package_config.json')}',
       'listing.dart',
       Platform.resolvedExecutable,
       '${package.dir.path}/fake_dart_mutant.dart',
