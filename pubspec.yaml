@@ -2,7 +2,7 @@ name: test_gates
 description: >-
   Test gates for the Dart and Flutter code that must not be wrong: per-file
   100% line and branch coverage, static checks and mutation testing.
-version: 0.3.0
+version: 0.3.1
 repository: https://github.com/t09tanaka/test-gates-dart
 issue_tracker: https://github.com/t09tanaka/test-gates-dart/issues
 topics:

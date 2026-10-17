@@ -1,5 +1,49 @@
 # Changelog
 
+## 0.3.1
+
+- **Fix: `mutation` reused the results of a gate after a file it depends on
+  had changed in another package at a `path:` or in another member of the
+  pub workspace.** An import of `package:<other>/` was not followed, and
+  `pubspec.lock` does not change with such a file, so a gate whose tests no
+  longer killed its mutants was reported as OK until `--force`. The record
+  now compares the files of those packages as well (where they are comes
+  from `.dart_tool/package_config.json` of the root of the resolution;
+  packages pinned as `hosted`, `git` or `sdk` in `pubspec.lock` are left to
+  the lock file). When the packages cannot be told (no
+  `package_config.json`, no lock file, a package not in it), a gate that
+  imports another package runs every mutant, and the first line says why.
+- Imports outside the package (`../shared/x.dart`, a prefix of
+  `settings.importAliases` that points at `..`) are followed and compared,
+  instead of running every mutant every time.
+- A conditional import of a file that is not there
+  (`import 'h.dart' if (dart.library.html) 'h_web.dart'`) is recorded as
+  missing, and the file appearing is a change. A file imported without a
+  condition that is missing still runs every mutant.
+- More names that read assets or golden files make a gate run again when any
+  file of the package changed: `DefaultAssetBundle`, `AssetBundle`,
+  `PlatformAssetBundle`, `CachingAssetBundle`, `AssetImage`,
+  `ExactAssetImage`, a member `.asset` (`Image.asset`, `SvgPicture.asset`),
+  `loadString`, `loadStructuredData`, and `screenMatchesGolden`,
+  `multiScreenGolden`, `testGoldens`, `loadAppFonts` (golden_toolkit),
+  `goldenTest` (alchemist). A helper in a package at a path that imports
+  `dart:io` is seen as well.
+- The reason of a gate that runs again names the files that the last record
+  does not have apart from those that changed:
+  `changed lib/a.dart; not in the last record (new to the comparison): ../core/lib/c.dart, …`.
+- Fix: on a signal, `mutation` could return before the tool behind a
+  launcher that had just ended was done putting files back. An empty
+  listing of the descendants of the command no longer replaces the last
+  one, so the tool is still waited for.
+
+**Upgrading from 0.3.0:** the record keeps its format, but a record of 0.3.0
+does not have the files of other packages. The first run after the upgrade
+runs each gate that reaches a package at a path or another member of the
+workspace again once, with every mutant
+(`not in the last record (new to the comparison): ../…`). Nothing is reused
+wrongly. A package without `.dart_tool/package_config.json` whose gates
+import another package now runs every mutant every time.
+
 ## 0.3.0
 
 `mutation` reuses the results of the last run per gate, by what the gate
