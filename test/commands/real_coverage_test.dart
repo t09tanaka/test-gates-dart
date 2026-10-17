@@ -8,6 +8,8 @@ import 'package:test/test.dart';
 import 'package:test_gates/src/cli.dart';
 import 'package:test_gates/src/commands/output.dart';
 
+import '../package_root.dart';
+
 /// `selfcheck` and `test` against the real thing: a small package whose
 /// coverage is collected by `dart test`. The source is kept as .txt
 /// (test/fixtures/selfcheck/package) so that it is not analyzed or run with
@@ -37,7 +39,9 @@ void main() {
       File('${dir.path}/$source')
         ..createSync(recursive: true)
         ..writeAsBytesSync(
-          File('test/fixtures/selfcheck/package/$source.txt').readAsBytesSync(),
+          File(
+            inPackage('test/fixtures/selfcheck/package/$source.txt'),
+          ).readAsBytesSync(),
         );
     }
     // The packages are in the cache: this package depends on `test` too.

@@ -8,6 +8,7 @@ import 'package:test/test.dart';
 import 'package:test_gates/src/cli.dart';
 import 'package:test_gates/src/commands/mutation.dart';
 
+import '../package_root.dart';
 import 'package_fixture.dart';
 
 const sourceA = 'int a(int x) => x + 1;\n';
@@ -67,10 +68,10 @@ void main() {
   setUp(() {
     package = PackageFixture();
     File(
-      'test/fixtures/mutation/fake_dart_mutant.dart.txt',
+      inPackage('test/fixtures/mutation/fake_dart_mutant.dart.txt'),
     ).copySync('${package.dir.path}/fake_dart_mutant.dart');
     File(
-      'test/fixtures/mutation/fake_fetch.dart.txt',
+      inPackage('test/fixtures/mutation/fake_fetch.dart.txt'),
     ).copySync('${package.dir.path}/fake_fetch.dart');
     package.write('lib/a.dart', sourceA);
     package.write('lib/b.dart', sourceB);
@@ -509,7 +510,7 @@ void main() {
       expect(
         package.read(kept),
         File(
-          'test/fixtures/mutation/fake_dart_mutant.dart.txt',
+          inPackage('test/fixtures/mutation/fake_dart_mutant.dart.txt'),
         ).readAsStringSync(),
       );
       expect(
@@ -1053,19 +1054,52 @@ void main(List<String> arguments) {
         for (final name in ['fake_dart_mutant.dart', 'fake_fetch.dart']) {
           package.file(name).copySync('$dir/$name');
         }
-        final before = Directory.current;
+        // `--dir .` is the command line started in the member. It is a
+        // process of its own: the working directory belongs to the whole
+        // process, and the other test files run beside this one in it.
+        final launcher = '${package.dir.path}/dart_mutant';
+        final program = '${package.dir.path}/test_gates.dill';
         if (here) {
-          Directory.current = dir;
-          addTearDown(() => Directory.current = before);
+          package.write(
+            'dart_mutant',
+            '#!/bin/sh\n'
+                'exec "${Platform.resolvedExecutable}" '
+                '"$dir/fake_dart_mutant.dart" "\$@"\n',
+          );
+          Process.runSync('chmod', ['+x', launcher]);
+          // Compiled once: started from its source, the command line takes
+          // seconds for each of the runs below.
+          final compiled = Process.runSync(Platform.resolvedExecutable, [
+            'compile',
+            'kernel',
+            inPackage('bin/test_gates.dart'),
+            '-o',
+            program,
+          ]);
+          expect(compiled.exitCode, 0, reason: '${compiled.stderr}');
         }
-        Future<int> run() => runMutation(
-          here ? '.' : dir,
-          null,
-          const [],
-          package.io,
-          candidates: [fake],
-          ci: false,
-        );
+        Future<int> run() async {
+          if (!here) {
+            return runMutation(
+              dir,
+              null,
+              const [],
+              package.io,
+              candidates: [fake],
+              ci: false,
+            );
+          }
+          final result = await Process.run(
+            Platform.resolvedExecutable,
+            [program, 'mutation', '--dir', '.'],
+            workingDirectory: dir,
+            environment: {'TEST_GATES_DART_MUTANT': launcher, 'CI': ''},
+          );
+          package.out.addAll(LineSplitter.split(result.stdout as String));
+          package.err.addAll(LineSplitter.split(result.stderr as String));
+          return result.exitCode;
+        }
+
         expect(await run(), 0, reason: package.err.join('\n'));
         package.out.clear();
         expect(await run(), 0);

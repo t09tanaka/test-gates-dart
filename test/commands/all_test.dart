@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:test_gates/src/cli.dart';
 
+import '../package_root.dart';
 import 'package_fixture.dart';
 
 const gates = ['lib/a.dart', 'lib/b.dart'];
@@ -181,7 +182,7 @@ void main() {
     /// it wrote to stdout and stderr.
     ({int code, String out, String err}) start(List<String> arguments) {
       final result = Process.runSync(Platform.resolvedExecutable, [
-        File('bin/test_gates.dart').absolute.path,
+        inPackage('bin/test_gates.dart'),
         arguments.first,
         '--dir',
         package.dir.path,

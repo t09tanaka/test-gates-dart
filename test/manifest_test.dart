@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:test_gates/src/manifest.dart';
 
+import 'package_root.dart';
+
 const gate = {'path': 'lib/a.dart', 'decides': 'd', 'impact': 'i'};
 
 ParsedManifest parse(Object? json) => parseManifest(jsonEncode(json));
@@ -136,7 +138,9 @@ void main() {
     test('reads a manifest written for a Flutter app as it is', () {
       final manifest = parseManifest(
         File(
-          'test/fixtures/manifest/flutter-coverage-only.test-gates.json',
+          inPackage(
+            'test/fixtures/manifest/flutter-coverage-only.test-gates.json',
+          ),
         ).readAsStringSync(),
       );
       expect(manifest.violations, isEmpty);

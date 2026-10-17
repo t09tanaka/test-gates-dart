@@ -8,6 +8,7 @@ import 'dart:io';
 
 import 'package:test/test.dart';
 
+import '../package_root.dart';
 import 'package_fixture.dart';
 
 /// `timezones` interrupted while the tests run in the first zone.
@@ -17,7 +18,7 @@ void main() {
   setUp(() {
     package = PackageFixture();
     File(
-      'test/fixtures/zones/fake_zone_test.dart.txt',
+      inPackage('test/fixtures/zones/fake_zone_test.dart.txt'),
     ).copySync('${package.dir.path}/fake_zone_test.dart');
     package.write(
       'lib/due.dart',
@@ -40,14 +41,14 @@ void main() {
     test('$signal: the tests are ended, the other zone is not run, exit '
         'code $code', () async {
       final process = await Process.start(Platform.resolvedExecutable, [
-        'bin/test_gates.dart',
+        inPackage('bin/test_gates.dart'),
         'timezones',
         '--dir',
         package.dir.path,
         '--',
         Platform.resolvedExecutable,
         'fake_zone_test.dart',
-      ]);
+      ], workingDirectory: packageRoot);
       final stderrText = process.stderr
           .transform(systemEncoding.decoder)
           .join();

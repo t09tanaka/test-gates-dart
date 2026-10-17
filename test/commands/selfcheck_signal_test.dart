@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:test_gates/src/selfcheck.dart';
 
+import '../package_root.dart';
 import 'package_fixture.dart';
 
 const gates = ['lib/a.dart', 'lib/b.dart'];
@@ -45,11 +46,11 @@ void main() {
       );
       package.write('coverage/lcov.info', 'old\n');
       final process = await Process.start(Platform.resolvedExecutable, [
-        'bin/test_gates.dart',
+        inPackage('bin/test_gates.dart'),
         'selfcheck',
         '--dir',
         package.dir.path,
-      ]);
+      ], workingDirectory: packageRoot);
       final stderrText = process.stderr
           .transform(systemEncoding.decoder)
           .join();
