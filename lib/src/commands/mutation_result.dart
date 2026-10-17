@@ -63,6 +63,10 @@ List<String>? selectedGatesOf(LoadedManifest manifest, List<String> requested) {
 /// [gateFailures] says why a gate could not be mutation tested at all (path →
 /// reason); it replaces what the judgement says about that gate ("no mutants
 /// in the report").
+///
+/// [afterFailedRun] is set when dart_mutant has just printed its output and
+/// ended with exit code 1 (its FAILED): the first line then says which of
+/// the survivors it counted are allowed.
 int judgeReportFile(
   LoadedManifest manifest,
   String file,
@@ -70,6 +74,7 @@ int judgeReportFile(
   Map<String, String> gateFailures = const {},
   List<String>? only,
   bool listNotEvaluable = false,
+  bool afterFailedRun = false,
 }) {
   final gates = [
     for (final gate in manifest.gates)
@@ -128,6 +133,13 @@ int judgeReportFile(
       if (!gateFailures.containsKey(violation.file)) violation,
   ];
   final summary = formatSummary(verdict.summary);
+
+  // Right under the last line of dart_mutant, which it is about.
+  if (afterFailedRun) {
+    if (allowedSurvivorsNote(verdict.summary) case final note?) {
+      io.out('$executable mutation: $note');
+    }
+  }
 
   // Not a failure: shown on request, before the verdict.
   if (listNotEvaluable && verdict.notEvaluable.isNotEmpty) {

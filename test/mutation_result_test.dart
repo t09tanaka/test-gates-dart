@@ -967,6 +967,54 @@ void main() {
         'not evaluable 3 / unallowed survivors 1',
       );
     });
+
+    group('allowedSurvivorsNote', () {
+      MutationSummary summaryOf({
+        required int allowed,
+        required int unallowed,
+      }) => MutationSummary()
+        ..total = 10
+        ..detected = 10 - allowed - unallowed
+        ..allowed = allowed
+        ..unallowed = unallowed;
+
+      test('says nothing when no survivor is allowed', () {
+        expect(
+          allowedSurvivorsNote(summaryOf(allowed: 0, unallowed: 0)),
+          isNull,
+        );
+        expect(
+          allowedSurvivorsNote(summaryOf(allowed: 0, unallowed: 2)),
+          isNull,
+        );
+      });
+
+      test('every survivor allowed: the FAILED of dart_mutant counts them', () {
+        expect(
+          allowedSurvivorsNote(summaryOf(allowed: 3, unallowed: 0)),
+          'the FAILED of dart_mutant above counts the 3 survivor(s) that '
+          'test-gates.json allows (equivalentMutants). The verdict is the '
+          'last line, of test_gates',
+        );
+      });
+
+      test('one allowed survivor is enough for the note', () {
+        expect(
+          allowedSurvivorsNote(summaryOf(allowed: 1, unallowed: 0)),
+          startsWith('the FAILED of dart_mutant above counts the 1 survivor'),
+        );
+      });
+
+      test('allowed and unallowed survivors: both are named', () {
+        expect(
+          allowedSurvivorsNote(summaryOf(allowed: 2, unallowed: 1)),
+          'the FAILED of dart_mutant above counts the 2 survivor(s) that '
+          'test-gates.json allows (equivalentMutants), besides the 1 that it '
+          'does not allow (listed below). The verdict is the last line, of '
+          'test_gates',
+        );
+      });
+    });
   });
 
   group('judgeMutationReport: timeouts', () {

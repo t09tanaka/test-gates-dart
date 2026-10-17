@@ -232,6 +232,8 @@ void main() {
         'test_gates mutation: FAILED (mutants 3 / detected 1 (timeout 0) / '
             'allowed equivalent 0 / not evaluable 1 / unallowed survivors 1)',
       ]);
+      // No survivor is allowed, so the FAILED of the tool needs no note.
+      expect(shown(), isEmpty);
     });
 
     test('exit code 1 with a survivor that the gate allows: passes', () async {
@@ -257,6 +259,105 @@ void main() {
       );
       tool({
         'exit': 1,
+        'report': reportOf({
+          'lib/a.dart': [plus('Survived')],
+        }),
+      });
+      expect(await mutation(), 0);
+      // The tool has printed FAILED for that survivor: the line under it
+      // says that the survivor is allowed, and that the verdict follows.
+      expect(shown(), [
+        'test_gates mutation: the FAILED of dart_mutant above counts the 1 '
+            'survivor(s) that test-gates.json allows (equivalentMutants). The '
+            'verdict is the last line, of test_gates',
+        'test_gates mutation: OK (mutants 1 / detected 0 (timeout 0) / '
+            'allowed equivalent 1 / not evaluable 0 / unallowed survivors 0)',
+      ]);
+      expect(package.err, isEmpty);
+
+      // mutation-result runs no tool, so there is no FAILED to explain.
+      package.out.clear();
+      expect(
+        run(['mutation-result', '--dir', package.dir.path], package.io),
+        0,
+      );
+      expect(shown(), [
+        'test_gates mutation: OK (mutants 1 / detected 0 (timeout 0) / '
+            'allowed equivalent 1 / not evaluable 0 / unallowed survivors 0)',
+      ]);
+    });
+
+    test('exit code 1 with an allowed and an unallowed survivor: the note '
+        'names both, and the run fails', () async {
+      package.write(
+        'test-gates.json',
+        jsonEncode({
+          'gates': [
+            {
+              'path': 'lib/a.dart',
+              'decides': 'd',
+              'impact': 'i',
+              'equivalentMutants': [
+                {
+                  'mutator': 'ArithmeticOperator',
+                  'original': '+',
+                  'replacement': '-',
+                  'reason': 'for the test',
+                },
+              ],
+            },
+            {'path': 'lib/b.dart', 'decides': 'd', 'impact': 'i'},
+          ],
+        }),
+      );
+      tool({
+        'exit': 1,
+        'report': reportOf({
+          'lib/a.dart': [plus('Survived')],
+          'lib/b.dart': [times('Survived'), minus('Killed')],
+        }),
+      });
+      expect(await mutation(), 1);
+      expect(shown(), [
+        'test_gates mutation: the FAILED of dart_mutant above counts the 1 '
+            'survivor(s) that test-gates.json allows (equivalentMutants), '
+            'besides the 1 that it does not allow (listed below). The verdict '
+            'is the last line, of test_gates',
+      ]);
+      expect(
+        package.err.first,
+        'test_gates mutation: 1 surviving mutant(s) not in the allow list',
+      );
+      expect(
+        package.err.last,
+        'test_gates mutation: FAILED (mutants 3 / detected 1 (timeout 0) / '
+        'allowed equivalent 1 / not evaluable 0 / unallowed survivors 1)',
+      );
+    });
+
+    test('exit code 0 with an allowed survivor: the tool printed no FAILED, '
+        'so there is no note', () async {
+      package.write(
+        'test-gates.json',
+        jsonEncode({
+          'gates': [
+            {
+              'path': 'lib/a.dart',
+              'decides': 'd',
+              'impact': 'i',
+              'equivalentMutants': [
+                {
+                  'mutator': 'ArithmeticOperator',
+                  'original': '+',
+                  'replacement': '-',
+                  'reason': 'for the test',
+                },
+              ],
+            },
+          ],
+        }),
+      );
+      tool({
         'report': reportOf({
           'lib/a.dart': [plus('Survived')],
         }),

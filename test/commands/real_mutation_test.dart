@@ -150,6 +150,10 @@ void main() {
     expect(await cli(['mutation']), 0);
     expect(out, [
       startsWith('test_gates mutation: running every mutant of the gates '),
+      // Under the FAILED of the tool, which counts the allowed survivors.
+      'test_gates mutation: the FAILED of dart_mutant above counts the '
+          '$survivors survivor(s) that test-gates.json allows '
+          '(equivalentMutants). The verdict is the last line, of test_gates',
       'test_gates mutation: OK (mutants $mutants / detected $detected '
           '(timeout 0) / allowed equivalent $survivors / not evaluable '
           '$notEvaluable / unallowed survivors 0)',

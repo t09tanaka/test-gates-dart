@@ -543,5 +543,6 @@ Future<int> runMutation(
     gateFailures: failures,
     only: selected,
     listNotEvaluable: listNotEvaluable,
+    afterFailedRun: toolExitCode == 1,
   );
 }
