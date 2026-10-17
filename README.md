@@ -613,12 +613,13 @@ dart_mutant run: 2 surviving mutant(s)
   - lib/bulk_discount.dart:19:39 / NumberLiteral / 50 → 51 (Survived)
   - lib/shipping_fee.dart:14:11 / EqualityOperator / > → >= (Survived)
 dart_mutant run: FAILED (69 mutants / killed 65 / survived 2 / timeout 0 / compile error 2 (2 found before the run))
+test_gates mutation: the FAILED of dart_mutant above counts the 2 survivor(s) that test-gates.json allows (equivalentMutants). The verdict is the last line, of test_gates
 test_gates mutation: OK (mutants 69 / detected 65 (timeout 0) / allowed equivalent 2 / not evaluable 2 / unallowed survivors 0)
 ```
 
 (The outputs on this page are those of [`example/`](example). It has `test_gates` as a `path:` dependency, which is what the first line is about; a package of your own gets it from pub.dev.)
 
-The lines of `dart_mutant` come first, as it prints them. To that tool a survivor is a failure, so it ends with `FAILED`; the last line is the verdict of `test_gates`, which knows that the gates allow these two (see [Allowing an equivalent mutant](#allowing-an-equivalent-mutant)).
+The lines of `dart_mutant` come first, as it prints them. To that tool a survivor is a failure, so it ends with `FAILED`; the last line is the verdict of `test_gates`, which knows that the gates allow these two (see [Allowing an equivalent mutant](#allowing-an-equivalent-mutant)). **The verdict is the last line, and the exit code is that of this verdict.** When survivors that `test-gates.json` allows are among the ones `dart_mutant` counted, the line right under its `FAILED` says how many, so that the `FAILED` is not taken for the result. When some of them are not allowed, it says how many of those there are too, and they are listed below it. Without an allowed survivor (or when `dart_mutant` ended with exit code 0) that line is not printed, and neither is it by `mutation-result`, which runs no tool.
 
 ### Where `dart_mutant` comes from
 
@@ -768,6 +769,7 @@ dart_mutant run: the dependency "test_gates" is at a path relative to the packag
 dart_mutant run: 1 surviving mutant(s)
   - lib/shipping_fee.dart:14:11 / EqualityOperator / > → >= (Survived)
 dart_mutant run: FAILED (24 mutants / killed 22 / survived 1 / timeout 0 / compile error 1 (1 found before the run))
+test_gates mutation: the FAILED of dart_mutant above counts the 1 survivor(s) that test-gates.json allows (equivalentMutants). The verdict is the last line, of test_gates
 test_gates mutation: OK for 1 of 2 gate(s) (--gate) (mutants 24 / detected 22 (timeout 0) / allowed equivalent 1 / not evaluable 1 / unallowed survivors 0)
 ```
 
@@ -987,6 +989,7 @@ reference: overall line coverage 100.00% (16/16, not gated)
 test_gates lcov: OK (2 gate(s) at 100% line and branch coverage)
 test_gates timezones: OK (no gate names DateTime, so no test was run: 2 gate(s))
 test_gates mutation: nothing that the 2 gate(s) depend on changed since the last run: their results are reused, and a Timeout is measured again
+test_gates mutation: the FAILED of dart_mutant above counts the 2 survivor(s) that test-gates.json allows (equivalentMutants). The verdict is the last line, of test_gates
 test_gates mutation: OK (mutants 69 / detected 65 (timeout 0) / allowed equivalent 2 / not evaluable 2 / unallowed survivors 0)
 test_gates all: OK (check, test, timezones, mutation)
 ```

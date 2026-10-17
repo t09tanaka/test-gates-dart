@@ -612,3 +612,24 @@ String formatSummary(MutationSummary summary) =>
     '(timeout ${summary.timeout}) / allowed equivalent ${summary.allowed} / '
     'not evaluable ${summary.notEvaluable} / '
     'unallowed survivors ${summary.unallowed}';
+
+/// What to say right under the output of a dart_mutant run that ended with
+/// exit code 1, or `null` when there is nothing to add.
+///
+/// To dart_mutant every survivor is a failure: it knows no allowance, so its
+/// last line says FAILED also when every survivor is allowed and the verdict
+/// is OK. Said only when allowed survivors are among the ones it counted.
+String? allowedSurvivorsNote(MutationSummary summary) {
+  final allowed = summary.allowed;
+  if (allowed == 0) {
+    return null;
+  }
+  final counted =
+      'the FAILED of dart_mutant above counts the $allowed survivor(s) that '
+      'test-gates.json allows (equivalentMutants)';
+  if (summary.unallowed == 0) {
+    return '$counted. The verdict is the last line, of test_gates';
+  }
+  return '$counted, besides the ${summary.unallowed} that it does not allow '
+      '(listed below). The verdict is the last line, of test_gates';
+}
