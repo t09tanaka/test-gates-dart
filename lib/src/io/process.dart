@@ -285,19 +285,19 @@ Future<CommandResult> runCommand(
     }
   }
 
-  // For [handOver]: what descends from the command, and what did so and has
-  // not ended yet. A process whose parent has ended is no longer listed under
-  // the command: a listing taken after a launcher ended, and before that end
-  // is seen here, is empty, and would lose the tool behind the launcher.
+  // For [handOver]: what descends from the command, as of a moment ago. A
+  // process whose parent has ended is no longer listed under the command: a
+  // listing taken after a launcher ended, and before that end is seen here,
+  // is empty. It does not replace the last one, which has the tool behind
+  // the launcher in it.
   var seen = const <int>[];
   final watch = handOver
-      ? Timer.periodic(
-          const Duration(milliseconds: 500),
-          (_) => seen = {
-            ..._stillThere(seen),
-            ...listDescendants(process.pid),
-          }.toList(),
-        )
+      ? Timer.periodic(const Duration(milliseconds: 500), (_) {
+          final listed = listDescendants(process.pid);
+          if (listed.isNotEmpty) {
+            seen = listed;
+          }
+        })
       : null;
 
   final limit = Completer<_LimitReached>();

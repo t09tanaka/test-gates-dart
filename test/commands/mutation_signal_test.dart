@@ -197,8 +197,14 @@ import 'package:test_gates/src/io/process.dart';
 
 Future<void> main(List<String> command) async {
   var seen = false;
+  // Empty listings while the launcher was there: without one the old way
+  // would have kept the tool as well, and this would test nothing.
+  var emptied = 0;
   List<int> listing(int root) {
     if (seen) {
+      if (Process.runSync('kill', ['-0', '\$root']).exitCode == 0) {
+        emptied++;
+      }
       return const [];
     }
     final found = descendantsOf(root);
@@ -221,6 +227,7 @@ Future<void> main(List<String> command) async {
   );
   await signals.cancel();
   stdout.writeln(result.signal);
+  stdout.writeln(emptied > 0 ? 'emptied' : 'never emptied');
   File('returned').writeAsStringSync(
     File('put-back').existsSync() ? 'after the tool' : 'before the tool',
   );
@@ -235,7 +242,10 @@ Future<void> main(List<String> command) async {
     ], workingDirectory: package.dir.path);
 
     expect(result.exitCode, 0, reason: '${result.stderr}');
-    expect((result.stdout as String).trim(), '${ProcessSignal.sigterm}');
+    expect((result.stdout as String).trim().split('\n'), [
+      '${ProcessSignal.sigterm}',
+      'emptied',
+    ]);
     expect(package.read('returned'), 'after the tool');
   });
 }
