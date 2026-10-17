@@ -36,11 +36,13 @@
   listing of the descendants of the command no longer replaces the last
   one, so the tool is still waited for.
 
-**Upgrading from 0.3.0:** the record keeps its format, but a record of 0.3.0
-does not have the files of other packages. The first run after the upgrade
-runs each gate that reaches a package at a path or another member of the
-workspace again once, with every mutant
-(`not in the last record (new to the comparison): ../…`). Nothing is reused
+**Upgrading from 0.3.0:** the first run after the upgrade runs every mutant
+of every gate: the record compares `pubspec.yaml`, `pubspec.lock` and the
+version of `test_gates`, and an upgrade changes the version and
+`pubspec.lock` (and `pubspec.yaml` when its constraint is raised), as in
+`changed since the last run: pubspec.lock, pubspec.yaml, test_gates`. From
+the second run on, a change in a package at a path or another member of the
+workspace runs again only the gates that reach it. Nothing is reused
 wrongly. A package without `.dart_tool/package_config.json` whose gates
 import another package now runs every mutant every time.
 
