@@ -81,7 +81,7 @@ class CommandResult {
 
 /// The processes that descend from [root], as `ps` lists them now. Empty on
 /// Windows and when `ps` cannot be run.
-List<int> _descendantsOf(int root) {
+List<int> descendantsOf(int root) {
   if (Platform.isWindows) {
     return const [];
   }
@@ -119,7 +119,7 @@ List<int> _descendantsOf(int root) {
 /// killed alone can leave the process that runs the tests behind, spinning
 /// in the very loop that made it time out.
 Future<void> _endTree(Process process, Duration grace) async {
-  final descendants = _descendantsOf(process.pid);
+  final descendants = descendantsOf(process.pid);
   process.kill();
   await process.exitCode.timeout(
     grace,
@@ -167,8 +167,9 @@ Future<bool> _handOver(
   ProcessSignal? signal,
   Duration grace,
   List<int> seen,
+  List<int> Function(int root) listDescendants,
 ) async {
-  var descendants = {...seen, ..._descendantsOf(process.pid)}.toList();
+  var descendants = {...seen, ...listDescendants(process.pid)}.toList();
   if (signal != null) {
     process.kill(signal);
     for (final pid in descendants) {
@@ -244,6 +245,9 @@ const _signalGrace = Duration(milliseconds: 250);
 /// signal is passed on to it and to every process that descends from it, and
 /// they are waited for, because the command puts files back itself. What is
 /// still there after [grace] is killed, and the result says so.
+///
+/// [listDescendants] lists what descends from a process; a test passes its own
+/// to decide what a listing sees.
 Future<CommandResult> runCommand(
   List<String> command, {
   required String workingDirectory,
@@ -253,6 +257,7 @@ Future<CommandResult> runCommand(
   bool handOver = false,
   Duration grace = handOverGrace,
   Map<String, String>? environment,
+  List<int> Function(int root) listDescendants = descendantsOf,
 }) async {
   final Process process;
   try {
@@ -280,13 +285,17 @@ Future<CommandResult> runCommand(
     }
   }
 
-  // For [handOver]: what descends from the command, as of a moment ago.
+  // For [handOver]: what descends from the command, as of a moment ago. A
+  // process whose parent has ended is no longer listed under the command: a
+  // listing taken after a launcher ended, and before that end is seen here,
+  // is empty. It does not replace the last one, which has the tool behind
+  // the launcher in it; only what of that one has ended is dropped.
   var seen = const <int>[];
   final watch = handOver
-      ? Timer.periodic(
-          const Duration(milliseconds: 500),
-          (_) => seen = _descendantsOf(process.pid),
-        )
+      ? Timer.periodic(const Duration(milliseconds: 500), (_) {
+          final listed = listDescendants(process.pid);
+          seen = listed.isNotEmpty ? listed : _stillThere(seen);
+        })
       : null;
 
   final limit = Completer<_LimitReached>();
@@ -303,7 +312,7 @@ Future<CommandResult> runCommand(
   if (ended is ProcessSignal) {
     var killed = false;
     if (handOver) {
-      killed = await _handOver(process, ended, grace, seen);
+      killed = await _handOver(process, ended, grace, seen, listDescendants);
     } else {
       await _endTree(process, _killGrace);
     }
@@ -332,7 +341,7 @@ Future<CommandResult> runCommand(
     // The signal reached the command before it was seen here (Ctrl-C goes
     // to both), and what was started has ended: a launcher, perhaps. The
     // tool behind it has the signal as well, and is waited for.
-    killed = await _handOver(process, null, grace, seen);
+    killed = await _handOver(process, null, grace, seen, listDescendants);
   }
   return CommandResult(
     exitCode: signals.signal == null ? ended as int : null,
