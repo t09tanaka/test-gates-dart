@@ -36,7 +36,7 @@ dart run test_gates --help
 
 ```yaml
 dev_dependencies:
-  test_gates: ^0.3.1
+  test_gates: ^0.3.2
 ```
 
 Or once per machine, outside of any package:
